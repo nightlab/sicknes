@@ -1,0 +1,8 @@
+[package]
+name = "sicknes"
+version = "0.1.0"
+authors = ["Stephan König <tb@octoplex.org>"]
+edition = "2018"
+
+[dependencies]
+piston_window = "0.98.0"
