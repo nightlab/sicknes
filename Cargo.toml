@@ -5,4 +5,7 @@ authors = ["Stephan König <tb@octoplex.org>"]
 edition = "2018"
 
 [dependencies]
-piston_window = "0.98.0"
+piston = "0.52.0"
+piston_window = "0.111.0"
+clap = "3.0.0-beta.1"
+bitflags = "1.2.1"
