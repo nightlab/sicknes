@@ -4,10 +4,12 @@ extern crate piston_window;
 extern crate bitflags;
 
 use piston_window::*;
-use piston::input::*;
+
+mod cpu;
+mod sys;
 
 use clap::{App, crate_version, crate_authors, crate_description};
-use std::{thread, time};
+use std::{thread};
 use std::sync::mpsc::channel;
 
 bitflags! {
@@ -35,54 +37,6 @@ enum MainMsg {
     UpdateInput(u32, u32, u32, u32)
 }
 
-struct NES {
-    name: &'static str,
-    is_running: bool,
-    step: bool
-}
-
-impl NES {
-    fn new() -> NES {
-        NES {
-            is_running: false,
-            name: "Nintendo Entertainment System (Famicom)",
-            step: false
-        }
-    }
-}
-
-impl Machine for NES {
-    fn get_name(&self) -> &'static str {
-        self.name
-    }
-    fn reset(&mut self) {
-        self.is_running = false;
-    }
-    fn run(&mut self) {
-        self.is_running = true;
-    }
-    fn stop(&mut self) {
-        self.is_running = false;
-    }
-    fn step(&mut self) {
-        self.step = true;
-    }
-    fn insert_catridge(&mut self, filename: &str) {
-        println!("Inserting catridge {}...", filename);
-    }
-}
-
-trait Machine {
-    fn get_name(&self) -> &'static str;
-
-    fn reset(&mut self);
-    fn run(&mut self);
-    fn stop(&mut self);
-    fn step(&mut self);
-
-    fn insert_catridge(&mut self, filename: &str);
-}
-
 fn main() {
     let app_string = format!("sicknes {}", crate_version!());
     let args = App::new("sicknes")
@@ -95,13 +49,15 @@ fn main() {
     let (_core_tx, core_rx) = channel::<CoreMsg>();
     let (main_tx, main_rx) = channel::<MainMsg>();
     let core_thread = thread::spawn(move|| {
-        let mut machine : Box<dyn Machine> = Box::new(NES::new());
+        let mut machine : Box<dyn sys::Machine> = Box::new(sys::NES::new());
         println!("Creating machine \"{}\"...", machine.get_name());
         loop {
+            machine.update();
             if let Ok(msg) = main_rx.try_recv() {
                 match msg {
                     MainMsg::InsertCatridge(filename) => {
                         machine.insert_catridge(&filename);
+                        machine.reset();
                     }
                     MainMsg::UpdateInput(c1, c2, c3, c4) => {
                         println!("Controller State Change: {} {} {} {}", c1, c2, c3, c4);
@@ -109,7 +65,6 @@ fn main() {
                     MainMsg::WantExit => { break; }
                 }
             }
-            thread::sleep(time::Duration::from_millis(1));
         }
     });    
 
@@ -121,7 +76,7 @@ fn main() {
         .exit_on_esc(true).build().unwrap();
 
     let mut pad1 = NesPadState::empty();
-    let mut pad2 = NesPadState::empty();
+    let pad2 = NesPadState::empty();
 
     loop {
         if let Some(event) = window.next() {
@@ -167,7 +122,7 @@ fn main() {
             // render
             if let Some(_) = event.render_args() {
                 window.draw_2d(&event, |_context, graphics, _device| {
-                    clear([1.0; 4], graphics);
+                    clear([0.0; 4], graphics);
                 });
             }
         } else {
