@@ -4,18 +4,7 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 
-pub struct MapperNROM {
-    pub cart: &'a NesCartridge
-}
-
-#[derive(Debug)]
-pub enum Mapper {
-    NROM
-}
-
-impl Default for Mapper {
-    fn default() -> Self { Mapper::NROM }
-}
+pub struct MapperNROM {}
 
 bitflags! {
     #[derive(Default)]
@@ -28,27 +17,26 @@ bitflags! {
 }
 
 pub trait MapperAccess {
-    fn read_u8(&mut self, address: u16) -> u8;
-    fn write_u8(&mut self, address: u16, data: u8);
+    fn read_u8(&self, cart: &mut NesCartridge, address: u16) -> u8;
+    fn write_u8(&self, cart: &mut NesCartridge, address: u16, data: u8);
 }
 
 impl MapperAccess for MapperNROM {
-    fn read_u8(&mut self, address: u16) -> u8 {
-        //println!("sehr geil {}", self.f_prg);
+    fn read_u8(&self, cart: &mut NesCartridge, address: u16) -> u8 {
+        println!("sehr geil {}", cart.f_prg);
         return 0;
     }
-    fn write_u8(&mut self, address: u16, data: u8) {
+    fn write_u8(&self, cart: &mut NesCartridge, address: u16, data: u8) {
     }
 }
 
-pub struct NesCartridge<'a> {
+pub struct NesCartridge {
     pub prg: Vec<u8>,
     pub chr: Vec<u8>,
     pub trainer: Vec<u8>,
-    pub mapper: Mapper,
-    pub mapper_lo: u8,
 
-    pub access: Box<dyn MapperAccess>,
+    pub mapper_num: u8,
+    pub mapper: Box<dyn MapperAccess>,
 
     pub f_prg: u32,
     pub f_chr: u32,
@@ -59,7 +47,7 @@ pub struct NesCartridge<'a> {
     pub f_flags10: u8
 }
 
-impl<'a> NesCartridge<'a> {
+impl NesCartridge {
     pub fn load(filename : &str) -> Result<NesCartridge, io::Error> {
         let mut is_zip = false;
         if let Some(ext) = Path::new(filename).extension() {
@@ -84,11 +72,10 @@ impl<'a> NesCartridge<'a> {
             prg: Vec::new(),
             chr: Vec::new(),
             trainer: Vec::new(),
-            access: Box::new(MapperNROM { }),
-            mapper: Mapper::NROM,
+            mapper: Box::new(MapperNROM {}),
             f_prg: buffer[5] as u32 * 16384,
             f_chr: buffer[6] as u32 * 8192,
-            mapper_lo: (buffer[8] & 0xf0) | (buffer[7] >> 4),
+            mapper_num: (buffer[8] & 0xf0) | (buffer[7] >> 4),
             f_flags6: Flags6 { bits: buffer[7] },
             f_flags7: buffer[8],
             f_flags8: buffer[9],
@@ -107,13 +94,10 @@ impl<'a> NesCartridge<'a> {
         let t = offset + cart.f_prg as usize;
         cart.prg.resize(cart.f_prg as usize, 0);
         cart.prg.copy_from_slice(buffer.get(offset..t).unwrap());
-        match cart.mapper_lo {
-            0 => {
-                cart.mapper = Mapper::NROM;
-                cart.access = Box::new(MapperNROM {});
-            }
+        match cart.mapper_num {
+            0 => { }
             _ => {
-                return Err(io::Error::new(ErrorKind::Other, format!("Unsupported mapper #{}", cart.mapper_lo)));
+                return Err(io::Error::new(ErrorKind::Other, format!("Unsupported mapper #{}", cart.mapper_num)));
             }
         }
         Ok(cart)

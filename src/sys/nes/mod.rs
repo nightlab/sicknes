@@ -6,7 +6,7 @@ pub use cartridge::*;
 
 pub struct Bus {
     ram: [u8; 2048],
-    cart: Option<NesCartridge<'a>>,
+    cart: Option<NesCartridge>,
     bus_error: bool
 }
 
@@ -44,6 +44,7 @@ impl NES {
 
 impl sys::MemoryAccessA16D8 for Bus {
     fn read_u8(&mut self, address: u16) -> u8 {
+        self.cart.as_ref().unwrap().mapper.read_u8(self.cart.as_mut().unwrap(), 10);
         match address {
             0x0000..=0x1fff => {
                 let ra: usize = (address & 0x07ff).into();

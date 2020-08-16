@@ -11,6 +11,8 @@ mod sys;
 use clap::{App, crate_version, crate_authors, crate_description};
 use std::{thread, time};
 use std::sync::mpsc::channel;
+use std::panic;
+use std::process;
 
 bitflags! {
     struct NesPadState: u32 {
@@ -45,6 +47,12 @@ fn main() {
         .about(crate_description!())
         .arg("<rom> 'Load the ROM file in iNES format and boot'")
         .get_matches();
+
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |i| {
+        default_hook(i);
+        process::exit(1);
+    }));
 
     let (core_tx, core_rx) = channel::<CoreMsg>();
     let (main_tx, main_rx) = channel::<MainMsg>();
@@ -141,7 +149,7 @@ fn main() {
             core_thread.join().unwrap();
             break;
         }
-        
+
         if let Ok(msg) = core_rx.try_recv() {
             match msg {
                 CoreMsg::WantExit => { core_thread.join().unwrap(); break; }
