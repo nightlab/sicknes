@@ -4,7 +4,9 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 
-pub struct MapperNROM {}
+pub struct MapperNROM {
+    pub cart: &'a NesCartridge
+}
 
 #[derive(Debug)]
 pub enum Mapper {
@@ -32,22 +34,21 @@ pub trait MapperAccess {
 
 impl MapperAccess for MapperNROM {
     fn read_u8(&mut self, address: u16) -> u8 {
-        println!("sehr geil");
+        //println!("sehr geil {}", self.f_prg);
         return 0;
     }
     fn write_u8(&mut self, address: u16, data: u8) {
     }
 }
 
-#[derive(Default)]
-pub struct NesCartridge {
+pub struct NesCartridge<'a> {
     pub prg: Vec<u8>,
     pub chr: Vec<u8>,
     pub trainer: Vec<u8>,
     pub mapper: Mapper,
     pub mapper_lo: u8,
 
-    pub access: Option<Box<dyn MapperAccess>>,
+    pub access: Box<dyn MapperAccess>,
 
     pub f_prg: u32,
     pub f_chr: u32,
@@ -58,7 +59,7 @@ pub struct NesCartridge {
     pub f_flags10: u8
 }
 
-impl NesCartridge {
+impl<'a> NesCartridge<'a> {
     pub fn load(filename : &str) -> Result<NesCartridge, io::Error> {
         let mut is_zip = false;
         if let Some(ext) = Path::new(filename).extension() {
@@ -83,6 +84,7 @@ impl NesCartridge {
             prg: Vec::new(),
             chr: Vec::new(),
             trainer: Vec::new(),
+            access: Box::new(MapperNROM { }),
             mapper: Mapper::NROM,
             f_prg: buffer[5] as u32 * 16384,
             f_chr: buffer[6] as u32 * 8192,
@@ -91,8 +93,7 @@ impl NesCartridge {
             f_flags7: buffer[8],
             f_flags8: buffer[9],
             f_flags9: buffer[10],
-            f_flags10: buffer[11],
-            access: None
+            f_flags10: buffer[11]
         };
         let sz_exp = (16 + (cart.f_flags6.contains(Flags6::TRAINER) as u32 * 512) + cart.f_prg + cart.f_chr) as usize;
         if buffer.len() < sz_exp {
@@ -109,7 +110,7 @@ impl NesCartridge {
         match cart.mapper_lo {
             0 => {
                 cart.mapper = Mapper::NROM;
-                cart.access = Some(Box::new(MapperNROM {}));
+                cart.access = Box::new(MapperNROM {});
             }
             _ => {
                 return Err(io::Error::new(ErrorKind::Other, format!("Unsupported mapper #{}", cart.mapper_lo)));

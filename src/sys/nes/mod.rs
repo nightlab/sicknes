@@ -2,13 +2,11 @@ use crate::sys;
 use crate::cpu::Mos6502;
 
 pub mod cartridge;
-pub use cartridge::NesCartridge;
-pub use cartridge::MapperAccess;
-pub use cartridge::MapperNROM;
+pub use cartridge::*;
 
 pub struct Bus {
     ram: [u8; 2048],
-    cart: Option<NesCartridge>,
+    cart: Option<NesCartridge<'a>>,
     bus_error: bool
 }
 
@@ -46,9 +44,6 @@ impl NES {
 
 impl sys::MemoryAccessA16D8 for Bus {
     fn read_u8(&mut self, address: u16) -> u8 {
-        let access = self.cart.as_ref().unwrap().access.as_ref();
-        println!("{:?}", access);
-        
         match address {
             0x0000..=0x1fff => {
                 let ra: usize = (address & 0x07ff).into();
