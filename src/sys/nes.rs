@@ -84,9 +84,15 @@ impl NesCatridge {
             f_flags9: buffer[10],
             f_flags10: buffer[11]
         };
-        let mut offset: u32 = 16;
+        let sz_exp = (16 + (cart.f_flags6.contains(Flags6::TRAINER) as u32 * 512) + cart.f_prg + cart.f_chr) as usize;
+        if buffer.len() < sz_exp {
+            return Err(io::Error::new(ErrorKind::Other, format!("Header damaged (expected filesize < {})", sz_exp)));
+        }
+
+        let mut offset: usize = 16;
         if cart.f_flags6.contains(Flags6::TRAINER) {
             offset = offset + 512;
+            cart.trainer.copy_from_slice(buffer.get(16..offset).unwrap());
         }
         println!("{:?}", cart);
         Ok(cart)
