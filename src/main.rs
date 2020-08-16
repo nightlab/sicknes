@@ -9,7 +9,7 @@ mod cpu;
 mod sys;
 
 use clap::{App, crate_version, crate_authors, crate_description};
-use std::{thread};
+use std::{thread, time};
 use std::sync::mpsc::channel;
 
 bitflags! {
@@ -46,23 +46,34 @@ fn main() {
         .arg("<rom> 'Load the ROM file in iNES format and boot'")
         .get_matches();
 
-    let (_core_tx, core_rx) = channel::<CoreMsg>();
+    let (core_tx, core_rx) = channel::<CoreMsg>();
     let (main_tx, main_rx) = channel::<MainMsg>();
     let core_thread = thread::spawn(move|| {
         let mut machine : Box<dyn sys::Machine> = Box::new(sys::NES::new());
         println!("Creating machine \"{}\"...", machine.get_name());
         loop {
-            machine.update();
+            if machine.is_running() {
+                machine.update();
+            } else {
+                thread::sleep(time::Duration::from_millis(10));
+            }
             if let Ok(msg) = main_rx.try_recv() {
                 match msg {
                     MainMsg::InsertCatridge(filename) => {
-                        machine.insert_catridge(&filename);
-                        machine.reset();
+                        if machine.insert_catridge(&filename) {
+                            machine.reset();
+                            machine.run();
+                        } else {
+                            core_tx.send(CoreMsg::WantExit).unwrap();
+                            break;
+                        }
                     }
                     MainMsg::UpdateInput(c1, c2, c3, c4) => {
                         println!("Controller State Change: {} {} {} {}", c1, c2, c3, c4);
                     }
-                    MainMsg::WantExit => { break; }
+                    MainMsg::WantExit => {
+                        break;
+                    }
                 }
             }
         }
@@ -130,6 +141,7 @@ fn main() {
             core_thread.join().unwrap();
             break;
         }
+        
         if let Ok(msg) = core_rx.try_recv() {
             match msg {
                 CoreMsg::WantExit => { core_thread.join().unwrap(); break; }
