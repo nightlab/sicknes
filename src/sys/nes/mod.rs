@@ -7,6 +7,7 @@ pub use cartridge::*;
 pub struct Bus {
     ram: [u8; 2048],
     cart: Option<NesCartridge>,
+    mapper: Box<dyn MapperAccess>,
     bus_error: bool
 }
 
@@ -27,6 +28,7 @@ impl NES {
     pub fn new() -> NES {
         let bus = Bus {
             ram: [0; 2048],
+            mapper: Box::new(MapperDummy {}),
             cart: None,
             bus_error: false
         };
@@ -44,16 +46,18 @@ impl NES {
 
 impl sys::MemoryAccessA16D8 for Bus {
     fn read_u8(&mut self, address: u16) -> u8 {
-        self.cart.as_ref().unwrap().mapper.read_u8(self.cart.as_mut().unwrap(), 10);
         match address {
             0x0000..=0x1fff => {
                 let ra: usize = (address & 0x07ff).into();
                 self.ram[ra]
             }
-            0x2000..=0xffff => {
+            0x2000..=0x7fff => {
                 println!("BUS ERROR: Invalid read @ {:#06x}", address);
                 self.bus_error = true;
                 0xff
+            }
+            0x8000..=0xffff => {
+                self.mapper.read_u8(address)
             }
         }
     }
@@ -78,7 +82,7 @@ impl sys::Machine for NES {
 
     fn reset(&mut self) {
         self.is_running = false;
-        self.cpu.reset(&self.bus);
+        self.cpu.reset(&mut self.bus);
     }
 
     fn run(&mut self) {
@@ -116,12 +120,14 @@ impl sys::Machine for NES {
     
     fn insert_catridge(&mut self, filename: &str) -> bool {
         println!("Inserting catridge {}...", filename);
-        let cart = NesCartridge::load(filename);
-        if cart.is_err() {
-            println!("Error loading \"{}\": {}", filename, cart.err().unwrap());
+        let res = NesCartridge::load(filename);
+        if res.is_err() {
+            println!("Error loading \"{}\": {}", filename, res.err().unwrap());
             return false;
         }
-        self.bus.cart = Some(cart.unwrap());
+        let (cart, mapper) = res.unwrap();
+        self.bus.mapper = mapper;
+        self.bus.cart = Some(cart);
         true
     }
 }

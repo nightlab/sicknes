@@ -63,19 +63,21 @@ impl Mos6502 {
         }
     }
 
-    pub fn reset(&mut self, _bus: &dyn sys::MemoryAccessA16D8) {
+    pub fn reset(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
         self.a = 0;
         self.x = 0;
         self.y = 0;
         self.s = 0xfd;
         self.p.bits = 0x34;
-        self.pc = 0;
+        self.pc = (bus.read_u8(0xfffd) as u16) << 8 | bus.read_u8(0xfffc) as u16;
         self.cycle = 0;
     }
     
     pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
-        bus.read_u8(self.pc);
-        self.pc = self.pc.wrapping_add(1);
+        let opcode = bus.read_u8(self.pc);
+        println!("opcode {:#04x}", opcode);
+
+        //self.pc = self.pc.wrapping_add(1);
         self.cycle = self.cycle + 1;
     }
 }
