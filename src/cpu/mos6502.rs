@@ -54,6 +54,33 @@ macro_rules! o_load {
     }
 }
 
+macro_rules! o_and {
+    ($this:ident, $bus:expr, $addressing:ident, $len:expr) => {
+        let _op = $addressing!($this, $bus);
+        $this.a = $this.a & _op;
+        f_nz!($this, $this.a);
+        t_upc!($this, $len);
+    }
+}
+
+macro_rules! o_or {
+    ($this:ident, $bus:expr, $addressing:ident, $len:expr) => {
+        let _op = $addressing!($this, $bus);
+        $this.a = $this.a | _op;
+        f_nz!($this, $this.a);
+        t_upc!($this, $len);
+    }
+}
+
+macro_rules! o_xor {
+    ($this:ident, $bus:expr, $addressing:ident, $len:expr) => {
+        let _op = $addressing!($this, $bus);
+        $this.a = $this.a ^ _op;
+        f_nz!($this, $this.a);
+        t_upc!($this, $len);
+    }
+}
+
 macro_rules! o_bit {
     ($this:ident, $bus:expr, $operand:ident, $len:expr) => {
         $this.p.set(Status::NEGATIVE, $operand & 0x80 == 0x80);
@@ -122,6 +149,11 @@ impl Mos6502 {
     // dump opcode
     pub fn debug_op(&self, bus: &mut dyn sys::MemoryAccessA16D8, op: u8) -> (String, u16) {
         match op {
+            0x08 /* PHP */ => { (format!("PHP"), 1 /*LEN*/) }
+            0x48 /* PHA */ => { (format!("PHA"), 1 /*LEN*/) }
+            0x68 /* PLA */ => { (format!("PLA"), 1 /*LEN*/) }
+            0x28 /* PLP */ => { (format!("PLP"), 1 /*LEN*/) }
+
             0x4c /* JMP abs */ => { (format!("JMP ${:04X}", a_abs16!(self, bus)), 3 /*LEN*/) }
             
             0x78 /* SEI */ => { (format!("SEI"), 1 /*LEN*/) }
@@ -133,6 +165,16 @@ impl Mos6502 {
             0xb8 /* CLV */ => { (format!("CLV"), 1 /*LEN*/) }
 
             0x24 /* BIT zp */ => { let a = a_imm!(self, bus); (format!("BIT ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+
+            0x29 /* AND imm */ => { (format!("AND #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            
+            0x09 /* ORA imm */ => { (format!("ORA #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            
+            0x49 /* EOR imm */ => { (format!("EOR #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            
+            0x69 /* ADC imm */ => { (format!("ADC #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+
+            0xc9 /* CMP imm */ => { (format!("CMP #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
 
             0xa9 /* LDA imm */ => { (format!("LDA #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
             
@@ -169,6 +211,17 @@ impl Mos6502 {
     // execute opcode
     pub fn exec_op(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, op: u8) -> u32 {
         match op {
+            0x08 /* PHP */ => { bus.write_u8(0x100 + self.s as u16, self.p.bits); self.s = self.s.wrapping_sub(1); t_upc!(self, 1 /*LEN*/); 3 /*CYCLES*/ }
+            0x48 /* PHA */ => { bus.write_u8(0x100 + self.s as u16, self.a); self.s = self.s.wrapping_sub(1); t_upc!(self, 1 /*LEN*/); 3 /*CYCLES*/ }
+            0x68 /* PLA */ => { self.s = self.s.wrapping_add(1); self.a = bus.read_u8(0x100 + self.s as u16); f_nz!(self, self.a); t_upc!(self, 1 /*LEN*/); 4 /*CYCLES*/ }
+            0x28 /* PLP */ => {
+                self.s = self.s.wrapping_add(1);
+                self.p.bits = bus.read_u8(0x100 + self.s as u16);
+                f_nz!(self, self.p.bits);
+                t_upc!(self, 1 /*LEN*/);
+                4 /*CYCLES*/
+            }
+
             0x4c /* JMP abs */ => { self.pc = a_abs16!(self, bus); 3 /*CYCLES*/ }
 
             0x78 /* SEI */ => { self.p.insert(Status::INT_DIS); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
@@ -179,7 +232,20 @@ impl Mos6502 {
             0xd8 /* CLD */ => { self.p.remove(Status::DECIMAL); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
             0xb8 /* CLV */ => { self.p.remove(Status::OVERFLOW); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
 
-            0x24 /* BIT zp */ => { let op = self.a_zp(bus); o_bit!(self, bus, op, 2 /*LEN*/); 3 /*CYCLES*/ }
+            // check this! v-flag on different addressing modes!!!
+            0x24 /* BIT zp */ => { let o = self.a_zp(bus); o_bit!(self, bus, o, 2 /*LEN*/); 3 /*CYCLES*/ }
+
+            0x29 /* AND imm */ => { o_and!(self, bus, a_imm, 2 /*LEN*/); 2 /*CYCLES*/ }
+
+            0x09 /* ORA imm */ => { o_or!(self, bus, a_imm, 2 /*LEN*/); 2 /*CYCLES*/ }
+
+            0x49 /* EOR imm */ => { o_xor!(self, bus, a_imm, 2 /*LEN*/); 2 /*CYCLES*/ }
+
+            // unverified
+            0x69 /* ADC imm */ => { let o = self.a_imm(bus); self.a = self.o_adc(o, true); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+
+            // unverified
+            0xc9 /* CMP imm */ => { let o = self.a_imm(bus); self.a = self.o_adc(!o /* SBC */, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
 
             0xa9 /* LDA imm */ => { o_load!(self, bus, a_imm, a, 2 /*LEN*/); 2 /*CYCLES*/ }
 
@@ -235,9 +301,27 @@ impl Mos6502 {
     }
 
     // zeropage addressing
+    pub fn a_imm(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
+        bus.read_u8(self.pc.wrapping_add(1))
+    }
+
+    // zeropage addressing
     pub fn a_zp(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
         let a = bus.read_u8(self.pc.wrapping_add(1)) as u16;
         bus.read_u8(a)
+    }
+
+    // binary mode "add with carry"
+    pub fn o_adc(&mut self, operand: u8, set_overflow: bool) -> u8 {
+        let r16 = self.a as u16 + operand as u16 + self.p.contains(Status::CARRY) as u16;
+        let r = (r16 & 0xff) as u8;
+        if set_overflow {
+            self.p.set(Status::OVERFLOW, ((!(self.a ^ operand)) & (self.a ^ r)) & 0x80 == 0x80);
+        }
+        self.p.set(Status::CARRY, r16 > 0xff);
+        self.p.set(Status::ZERO, r == 0);
+        self.p.set(Status::NEGATIVE, (r & 0x80) == 0x80);
+        r
     }
 
     // generic branch function
@@ -258,7 +342,8 @@ impl Mos6502 {
     pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
         let op = bus.read_u8(self.pc);
         let (s, _) = self.debug_op(bus, op);
-        println!("{:#06X} {}\t\t{}", self.pc, s, self.cycle);
+        print!("{:#06X} {:<16}", self.pc, s);
         self.cycle = self.cycle + self.exec_op(bus, op);
+        println!(" -> {}", self);
     }
 }
