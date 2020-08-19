@@ -17,24 +17,6 @@ bitflags! {
     }
 }
 
-/*
-#[derive(Debug)]
-enum Addressing {
-    Implicit,
-    Accumulator,
-    Immediate,
-    Zeropage,
-    Absolute,
-    Relative,
-    Indirect,
-    ZpIndexedX,
-    ZpIndexedY,
-    AbsIndexedX,
-    AbsIndexedY,
-    IndexedIndirectX,
-    IndexedIndirectY
-}*/
-
 pub struct Mos6502 {
     a: u8,
     x: u8,
@@ -63,6 +45,21 @@ macro_rules! o_and {
     }
 }
 
+macro_rules! o_inc {
+    ($this:ident, $reg:ident, $len:expr) => {
+        $this.$reg = $this.$reg.wrapping_add(1);
+        f_nz!($this, $this.$reg);
+        t_upc!($this, $len);
+    }
+}
+
+macro_rules! o_dec {
+    ($this:ident, $reg:ident, $len:expr) => {
+        $this.$reg = $this.$reg.wrapping_sub(1);
+        f_nz!($this, $this.$reg);
+        t_upc!($this, $len);
+    }
+}
 macro_rules! o_or {
     ($this:ident, $bus:expr, $addressing:ident, $len:expr) => {
         let _op = $addressing!($this, $bus);
@@ -100,10 +97,6 @@ macro_rules! o_store_zp {
 
 macro_rules! a_imm {
     ($this:ident, $bus:expr) => { $bus.read_u8($this.pc.wrapping_add(1)) }
-}
-
-macro_rules! a_abs16 {
-    ($this:ident, $bus:expr) => { ($bus.read_u8($this.pc.wrapping_add(2)) as u16) << 8 | $bus.read_u8($this.pc.wrapping_add(1)) as u16 }
 }
 
 macro_rules! f_nz {
@@ -154,7 +147,7 @@ impl Mos6502 {
             0x68 /* PLA */ => { (format!("PLA"), 1 /*LEN*/) }
             0x28 /* PLP */ => { (format!("PLP"), 1 /*LEN*/) }
 
-            0x4c /* JMP abs */ => { (format!("JMP ${:04X}", a_abs16!(self, bus)), 3 /*LEN*/) }
+            0x4c /* JMP abs */ => { (format!("JMP ${:04X}", self.a_abs16(bus)), 3 /*LEN*/) }
             
             0x78 /* SEI */ => { (format!("SEI"), 1 /*LEN*/) }
             0x38 /* SEC */ => { (format!("SEC"), 1 /*LEN*/) }
@@ -163,6 +156,17 @@ impl Mos6502 {
             0x18 /* CLC */ => { (format!("CLC"), 1 /*LEN*/) }
             0xd8 /* CLD */ => { (format!("CLD"), 1 /*LEN*/) }
             0xb8 /* CLV */ => { (format!("CLV"), 1 /*LEN*/) }
+
+            0xe8 /* INX */ => { (format!("INX"), 1 /*LEN*/) }
+            0xc8 /* INY */ => { (format!("INY"), 1 /*LEN*/) }
+            0xca /* DEX */ => { (format!("DEX"), 1 /*LEN*/) }
+            0x88 /* DEY */ => { (format!("DEY"), 1 /*LEN*/) }
+            0xaa /* TAX */ => { (format!("TAX"), 1 /*LEN*/) }
+            0xa8 /* TAY */ => { (format!("TAY"), 1 /*LEN*/) }
+            0xba /* TSX */ => { (format!("TSX"), 1 /*LEN*/) }
+            0x8a /* TXA */ => { (format!("TXA"), 1 /*LEN*/) }
+            0x9a /* TXS */ => { (format!("TXS"), 1 /*LEN*/) }
+            0x98 /* TYA */ => { (format!("TYA"), 1 /*LEN*/) }
 
             0x24 /* BIT zp */ => { let a = a_imm!(self, bus); (format!("BIT ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
@@ -175,20 +179,30 @@ impl Mos6502 {
             0x69 /* ADC imm */ => { (format!("ADC #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
 
             0xc9 /* CMP imm */ => { (format!("CMP #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            0xc0 /* CPY imm */ => { (format!("CPY #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            0xe0 /* CPX imm */ => { (format!("CPX #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+
+            0xe9 /* SBC imm */ => { (format!("SBC #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
 
             0xa9 /* LDA imm */ => { (format!("LDA #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            0xad /* LDA abs */ => { (format!("LDA #${:04X}", a_imm!(self, bus)), 2 /*LEN*/) }
             
             0xa2 /* LDX imm */ => { (format!("LDX #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            0xae /* LDX abs */ => { (format!("LDX #${:04X}", a_imm!(self, bus)), 2 /*LEN*/) }
             
             0xa0 /* LDY imm */ => { (format!("LDY #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
+            0xac /* LDY abs */ => { (format!("LDY #${:04X}", a_imm!(self, bus)), 2 /*LEN*/) }
 
             0x85 /* STA zp */ => { let a = a_imm!(self, bus); (format!("STA ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x8d /* STA abs */ => { let a = self.a_abs16(bus); (format!("STA ${:04X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
             0x86 /* STX zp */ => { let a = a_imm!(self, bus); (format!("STX ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x8e /* STX abs */ => { let a = self.a_abs16(bus); (format!("STX ${:04X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
             0x84 /* STY zp */ => { let a = a_imm!(self, bus); (format!("STY ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x8c /* STY abs */ => { let a = self.a_abs16(bus); (format!("STY ${:04X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
-            0x20 /* JSR abs */ => { (format!("JSR ${:04X}", a_abs16!(self, bus)), 3 /*LEN*/) }
+            0x20 /* JSR abs */ => { (format!("JSR ${:04X}", self.a_abs16(bus)), 3 /*LEN*/) }
 
             0xb0 /* BCS rel */ => { (format!("BCS ${:04X}", self.a_rel(bus)), 2 /*LEN*/) }
             0x90 /* BCC rel */ => { (format!("BCC ${:04X}", self.a_rel(bus)), 2 /*LEN*/) }
@@ -222,7 +236,7 @@ impl Mos6502 {
                 4 /*CYCLES*/
             }
 
-            0x4c /* JMP abs */ => { self.pc = a_abs16!(self, bus); 3 /*CYCLES*/ }
+            0x4c /* JMP abs */ => { self.pc = self.a_abs16(bus); 3 /*CYCLES*/ }
 
             0x78 /* SEI */ => { self.p.insert(Status::INT_DIS); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
             0x38 /* SEC */ => { self.p.insert(Status::CARRY); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
@@ -231,6 +245,17 @@ impl Mos6502 {
             0x18 /* CLC */ => { self.p.remove(Status::CARRY); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
             0xd8 /* CLD */ => { self.p.remove(Status::DECIMAL); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
             0xb8 /* CLV */ => { self.p.remove(Status::OVERFLOW); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
+
+            0xe8 /* INX */ => { o_inc!(self, x, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0xc8 /* INY */ => { o_inc!(self, y, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0xca /* DEX */ => { o_dec!(self, x, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0x88 /* DEY */ => { o_dec!(self, y, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0xaa /* TAX */ => { self.x = self.a; f_nz!(self, self.x); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0xa8 /* TAY */ => { self.y = self.a; f_nz!(self, self.y); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0xba /* TSX */ => { self.x = self.s; f_nz!(self, self.x); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0x8a /* TXA */ => { self.a = self.x; f_nz!(self, self.a); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0x9a /* TXS */ => { self.s = self.x; t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
+            0x98 /* TYA */ => { self.a = self.y; f_nz!(self, self.a); t_upc!(self, 1 /*LEN*/); 2 /*CYCLES*/ }
 
             // check this! v-flag on different addressing modes!!!
             0x24 /* BIT zp */ => { let o = self.a_zp(bus); o_bit!(self, bus, o, 2 /*LEN*/); 3 /*CYCLES*/ }
@@ -242,25 +267,35 @@ impl Mos6502 {
             0x49 /* EOR imm */ => { o_xor!(self, bus, a_imm, 2 /*LEN*/); 2 /*CYCLES*/ }
 
             // unverified
-            0x69 /* ADC imm */ => { let o = self.a_imm(bus); self.a = self.o_adc(o, true); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0x69 /* ADC imm */ => { let o = self.a_imm(bus); self.a = self.o_adc(self.a, o); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
 
             // unverified
-            0xc9 /* CMP imm */ => { let o = self.a_imm(bus); self.a = self.o_adc(!o /* SBC */, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xc9 /* CMP imm */ => { let o = self.a_imm(bus); self.o_sbc(self.a, o, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xc0 /* CPY imm */ => { let o = self.a_imm(bus); self.o_sbc(self.y, o, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xe0 /* CPX imm */ => { let o = self.a_imm(bus); self.o_sbc(self.x, o, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+
+            0xe9 /* SBC imm */ => { let o = self.a_imm(bus); self.a = self.o_sbc(self.a, o, true); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
 
             0xa9 /* LDA imm */ => { o_load!(self, bus, a_imm, a, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xad /* LDA abs */ => { let a = self.a_abs16(bus); self.a = bus.read_u8(a); f_nz!(self, self.a); t_upc!(self, 3); 4 /*CYCLES*/ }
 
             0xa2 /* LDX imm */ => { o_load!(self, bus, a_imm, x, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xae /* LDX abs */ => { let a = self.a_abs16(bus); self.x = bus.read_u8(a); f_nz!(self, self.x); t_upc!(self, 3); 4 /*CYCLES*/ }
 
             0xa0 /* LDY imm */ => { o_load!(self, bus, a_imm, y, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xac /* LDY abs */ => { let a = self.a_abs16(bus); self.y = bus.read_u8(a); f_nz!(self, self.y); t_upc!(self, 3); 4 /*CYCLES*/ }
 
             0x85 /* STA zp */ => { o_store_zp!(self, bus, a, 2 /*LEN*/); 3 /*CYCLES*/ }
+            0x8d /* STA abs */ => { let a = self.a_abs16(bus); bus.write_u8(a, self.a); t_upc!(self, 3); 4 /*CYCLES*/ }
 
             0x86 /* STX zp */ => { o_store_zp!(self, bus, x, 2 /*LEN*/); 3 /*CYCLES*/ }
+            0x8e /* STX abs */ => { let a = self.a_abs16(bus); bus.write_u8(a, self.x); t_upc!(self, 3); 4 /*CYCLES*/ }
 
             0x84 /* STY zp */ => { o_store_zp!(self, bus, y, 2 /*LEN*/); 3 /*CYCLES*/ }
+            0x8c /* STY abs */ => { let a = self.a_abs16(bus); bus.write_u8(a, self.y); t_upc!(self, 3); 4 /*CYCLES*/ }
 
             0x20 /* JSR */ => {
-                let ta = a_abs16!(self, bus);
+                let ta = self.a_abs16(bus);
                 t_upc!(self, 2);
                 bus.write_u8(0x100 + self.s as u16, (self.pc >> 8) as u8);
                 self.s = self.s.wrapping_sub(1);
@@ -305,6 +340,11 @@ impl Mos6502 {
         bus.read_u8(self.pc.wrapping_add(1))
     }
 
+    // absolute addressing
+    pub fn a_abs16(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u16 {
+        (bus.read_u8(self.pc.wrapping_add(2)) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1)) as u16
+    }
+
     // zeropage addressing
     pub fn a_zp(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
         let a = bus.read_u8(self.pc.wrapping_add(1)) as u16;
@@ -312,16 +352,28 @@ impl Mos6502 {
     }
 
     // binary mode "add with carry"
-    pub fn o_adc(&mut self, operand: u8, set_overflow: bool) -> u8 {
-        let r16 = self.a as u16 + operand as u16 + self.p.contains(Status::CARRY) as u16;
-        let r = (r16 & 0xff) as u8;
+    pub fn o_adc(&mut self, reg: u8, operand: u8) -> u8 {
+        let res16 = reg as u16 + operand as u16 + self.p.contains(Status::CARRY) as u16;
+        let res = (res16 & 0xff) as u8;
+        self.p.set(Status::OVERFLOW, ((!(reg ^ operand)) & (reg ^ res)) & 0x80 == 0x80);
+        self.p.set(Status::CARRY, res16 > 0xff);
+        self.p.set(Status::ZERO, res == 0);
+        self.p.set(Status::NEGATIVE, (res & 0x80) == 0x80);
+        res
+    }
+
+    // binary mode "substract with carry"
+    pub fn o_sbc(&mut self, reg: u8, operand: u8, set_overflow: bool) -> u8 {
+        let io = !operand;
+        let res16 = reg as u16 + io as u16 + self.p.contains(Status::CARRY) as u16;
+        let res = (res16 & 0xff) as u8;
         if set_overflow {
-            self.p.set(Status::OVERFLOW, ((!(self.a ^ operand)) & (self.a ^ r)) & 0x80 == 0x80);
+            self.p.set(Status::OVERFLOW, ((!(reg ^ io)) & (reg ^ res)) & 0x80 == 0x80);
         }
-        self.p.set(Status::CARRY, r16 > 0xff);
-        self.p.set(Status::ZERO, r == 0);
-        self.p.set(Status::NEGATIVE, (r & 0x80) == 0x80);
-        r
+        self.p.set(Status::CARRY, res16 > 0xff);
+        self.p.set(Status::ZERO, res == 0);
+        self.p.set(Status::NEGATIVE, (res & 0x80) == 0x80);
+        res
     }
 
     // generic branch function
