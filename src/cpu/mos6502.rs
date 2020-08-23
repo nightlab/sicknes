@@ -133,7 +133,7 @@ impl Mos6502 {
         self.x = 1;
         self.y = 0;
         self.s = 0xfd;
-        self.p.bits = 0x34;
+        self.p.bits = 0x34; // @todo bit 4 set after reset or not??? 
         self.pc = (bus.read_u8(0xfffd) as u16) << 8 | bus.read_u8(0xfffc) as u16;
         self.pc = 0xC000;
         self.cycle = 7;
@@ -225,7 +225,12 @@ impl Mos6502 {
     // execute opcode
     pub fn exec_op(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, op: u8) -> u32 {
         match op {
-            0x08 /* PHP */ => { bus.write_u8(0x100 + self.s as u16, self.p.bits); self.s = self.s.wrapping_sub(1); t_upc!(self, 1 /*LEN*/); 3 /*CYCLES*/ }
+            0x08 /* PHP */ => {
+                bus.write_u8(0x100 + self.s as u16, self.p.bits);
+                self.s = self.s.wrapping_sub(1);
+                t_upc!(self, 1 /*LEN*/);
+                3 /*CYCLES*/
+            }
             0x48 /* PHA */ => { bus.write_u8(0x100 + self.s as u16, self.a); self.s = self.s.wrapping_sub(1); t_upc!(self, 1 /*LEN*/); 3 /*CYCLES*/ }
             0x68 /* PLA */ => { self.s = self.s.wrapping_add(1); self.a = bus.read_u8(0x100 + self.s as u16); f_nz!(self, self.a); t_upc!(self, 1 /*LEN*/); 4 /*CYCLES*/ }
             0x28 /* PLP */ => {
@@ -394,8 +399,9 @@ impl Mos6502 {
     pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
         let op = bus.read_u8(self.pc);
         let (s, _) = self.debug_op(bus, op);
-        print!("{:#06X} {:<16}", self.pc, s);
+        print!("{:#06X} {:<16} ", self.pc, s);
+        let c = self.cycle;
         self.cycle = self.cycle + self.exec_op(bus, op);
-        println!(" -> {}", self);
+        println!(" -> {} {}", self, c);
     }
 }
