@@ -113,8 +113,8 @@ macro_rules! t_upc {
 impl fmt::Display for Mos6502 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
-            "A={:02X} X={:02X} Y={:02X} S={:02X} FLAGS={:#04X}({:?}) PC={:#06X} CYCLE={}",
-            self.a, self.x, self.y, self.s, self.p, self.p, self.pc, self.cycle
+            "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            self.a, self.x, self.y, self.p, self.s
         )
     }
 }
@@ -133,7 +133,7 @@ impl Mos6502 {
         self.x = 1;
         self.y = 0;
         self.s = 0xfd;
-        self.p.bits = 0x34; // @todo bit 4 set after reset or not??? 
+        self.p.bits = 0x24; // @todo bit 4 set after reset or not??? 
         self.pc = (bus.read_u8(0xfffd) as u16) << 8 | bus.read_u8(0xfffc) as u16;
         self.pc = 0xC000;
         self.cycle = 7;
@@ -168,7 +168,7 @@ impl Mos6502 {
             0x9a /* TXS */ => { (format!("TXS"), 1 /*LEN*/) }
             0x98 /* TYA */ => { (format!("TYA"), 1 /*LEN*/) }
 
-            0x24 /* BIT zp */ => { let a = a_imm!(self, bus); (format!("BIT ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x24 /* BIT zp */ => { let a = a_imm!(self, bus); (format!("BIT ${:02X} = {:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
             0x29 /* AND imm */ => { (format!("AND #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
             
@@ -193,14 +193,14 @@ impl Mos6502 {
             0xa0 /* LDY imm */ => { (format!("LDY #${:02X}", a_imm!(self, bus)), 2 /*LEN*/) }
             0xac /* LDY abs */ => { (format!("LDY #${:04X}", a_imm!(self, bus)), 2 /*LEN*/) }
 
-            0x85 /* STA zp */ => { let a = a_imm!(self, bus); (format!("STA ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
-            0x8d /* STA abs */ => { let a = self.a_abs16(bus); (format!("STA ${:04X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x85 /* STA zp */ => { let a = a_imm!(self, bus); (format!("STA ${:02X} = {:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x8d /* STA abs */ => { let a = self.a_abs16(bus); (format!("STA ${:04X} = {:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
-            0x86 /* STX zp */ => { let a = a_imm!(self, bus); (format!("STX ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
-            0x8e /* STX abs */ => { let a = self.a_abs16(bus); (format!("STX ${:04X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x86 /* STX zp */ => { let a = a_imm!(self, bus); (format!("STX ${:02X} = {:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x8e /* STX abs */ => { let a = self.a_abs16(bus); (format!("STX ${:04X} = {:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
-            0x84 /* STY zp */ => { let a = a_imm!(self, bus); (format!("STY ${:02X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
-            0x8c /* STY abs */ => { let a = self.a_abs16(bus); (format!("STY ${:04X} = ${:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x84 /* STY zp */ => { let a = a_imm!(self, bus); (format!("STY ${:02X} = {:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
+            0x8c /* STY abs */ => { let a = self.a_abs16(bus); (format!("STY ${:04X} = {:02X}", a, bus.read_u8(a as u16)), 2 /*LEN*/) }
 
             0x20 /* JSR abs */ => { (format!("JSR ${:04X}", self.a_abs16(bus)), 3 /*LEN*/) }
 
@@ -226,7 +226,7 @@ impl Mos6502 {
     pub fn exec_op(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, op: u8) -> u32 {
         match op {
             0x08 /* PHP */ => {
-                bus.write_u8(0x100 + self.s as u16, self.p.bits);
+                bus.write_u8(0x100 + self.s as u16, self.p.bits | 0x30);
                 self.s = self.s.wrapping_sub(1);
                 t_upc!(self, 1 /*LEN*/);
                 3 /*CYCLES*/
@@ -235,8 +235,7 @@ impl Mos6502 {
             0x68 /* PLA */ => { self.s = self.s.wrapping_add(1); self.a = bus.read_u8(0x100 + self.s as u16); f_nz!(self, self.a); t_upc!(self, 1 /*LEN*/); 4 /*CYCLES*/ }
             0x28 /* PLP */ => {
                 self.s = self.s.wrapping_add(1);
-                self.p.bits = bus.read_u8(0x100 + self.s as u16);
-                f_nz!(self, self.p.bits);
+                self.p.bits = bus.read_u8(0x100 + self.s as u16) | 0x20;
                 t_upc!(self, 1 /*LEN*/);
                 4 /*CYCLES*/
             }
@@ -275,11 +274,11 @@ impl Mos6502 {
             0x69 /* ADC imm */ => { let o = self.a_imm(bus); self.a = self.o_adc(self.a, o); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
 
             // unverified
-            0xc9 /* CMP imm */ => { let o = self.a_imm(bus); self.o_sbc(self.a, o, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
-            0xc0 /* CPY imm */ => { let o = self.a_imm(bus); self.o_sbc(self.y, o, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
-            0xe0 /* CPX imm */ => { let o = self.a_imm(bus); self.o_sbc(self.x, o, false); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xc9 /* CMP imm */ => { let o = self.a_imm(bus); self.o_cmp(self.a, o); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xc0 /* CPY imm */ => { let o = self.a_imm(bus); self.o_cmp(self.y, o); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xe0 /* CPX imm */ => { let o = self.a_imm(bus); self.o_cmp(self.x, o); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
 
-            0xe9 /* SBC imm */ => { let o = self.a_imm(bus); self.a = self.o_sbc(self.a, o, true); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
+            0xe9 /* SBC imm */ => { let o = self.a_imm(bus); self.a = self.o_adc(self.a, !o); t_upc!(self, 2 /*LEN*/); 2 /*CYCLES*/ }
 
             0xa9 /* LDA imm */ => { o_load!(self, bus, a_imm, a, 2 /*LEN*/); 2 /*CYCLES*/ }
             0xad /* LDA abs */ => { let a = self.a_abs16(bus); self.a = bus.read_u8(a); f_nz!(self, self.a); t_upc!(self, 3); 4 /*CYCLES*/ }
@@ -367,18 +366,12 @@ impl Mos6502 {
         res
     }
 
-    // binary mode "substract with carry"
-    pub fn o_sbc(&mut self, reg: u8, operand: u8, set_overflow: bool) -> u8 {
-        let io = !operand;
-        let res16 = reg as u16 + io as u16 + self.p.contains(Status::CARRY) as u16;
-        let res = (res16 & 0xff) as u8;
-        if set_overflow {
-            self.p.set(Status::OVERFLOW, ((!(reg ^ io)) & (reg ^ res)) & 0x80 == 0x80);
-        }
-        self.p.set(Status::CARRY, res16 > 0xff);
+    // binary mode "add with carry"
+    pub fn o_cmp(&mut self, reg: u8, operand: u8) {
+        let (res, ovf) = reg.overflowing_sub(operand);
+        self.p.set(Status::CARRY, ovf == false);
         self.p.set(Status::ZERO, res == 0);
         self.p.set(Status::NEGATIVE, (res & 0x80) == 0x80);
-        res
     }
 
     // generic branch function
@@ -399,9 +392,10 @@ impl Mos6502 {
     pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
         let op = bus.read_u8(self.pc);
         let (s, _) = self.debug_op(bus, op);
-        print!("{:#06X} {:<16} ", self.pc, s);
-        let c = self.cycle;
+        println!("{:04X}            {:<32} {}             CYC:{}", self.pc, s, self, self.cycle);
+        /*if self.pc == 0xC804 {
+            panic!("BREAKPOINT");
+        }*/
         self.cycle = self.cycle + self.exec_op(bus, op);
-        println!(" -> {} {}", self, c);
     }
 }
