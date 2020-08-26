@@ -7,6 +7,7 @@ use piston_window::*;
 
 mod cpu;
 mod sys;
+mod tests;
 
 use clap::{App, crate_version, crate_authors, crate_description};
 use std::{thread, time};

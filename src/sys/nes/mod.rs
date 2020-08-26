@@ -21,6 +21,10 @@ pub struct NES {
     _clock_cpu: u32,
 
     is_running: bool,
+
+    pub is_breakpoint: bool,
+    pub breakpoints: Vec<u16>,
+
     step: bool
 }
 
@@ -34,8 +38,10 @@ impl NES {
         };
         NES {
             bus,
-            cpu: Mos6502::new(),
+            cpu: Mos6502::new(true),
             is_running: false,
+            is_breakpoint: false,
+            breakpoints: Vec::new(),
             name: "Nintendo Entertainment System (Famicom)",
             _clock_master: 21441960,
             _clock_cpu: 1786830, // Master / 12
