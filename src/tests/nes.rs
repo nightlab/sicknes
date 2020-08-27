@@ -28,7 +28,6 @@ fn rom_cpu_nestest() {
     machine.cpu.pc = 0xc000;
 
     // run cpu
-    machine.run();
     while !machine.bus.bus_error && machine.cpu.pc != 0x0500 {
         machine.cpu.step(&mut machine.bus);
     }

@@ -10,7 +10,8 @@ mod sys;
 mod tests;
 
 use clap::{App, crate_version, crate_authors, crate_description};
-use std::{thread, time};
+use std::{thread};
+use std::time::{Instant};
 use std::sync::mpsc::channel;
 use std::panic;
 use std::process;
@@ -60,30 +61,34 @@ fn main() {
     let core_thread = thread::spawn(move|| {
         let mut machine : Box<dyn sys::Machine> = Box::new(sys::NES::new());
         println!("Creating machine \"{}\"...", machine.get_name());
+        let mut now = Instant::now();
+        let mut cycles: u32 = 0;
         loop {
-            if machine.is_running() {
-                machine.update();
-            } else {
-                thread::sleep(time::Duration::from_millis(10));
-            }
-            if let Ok(msg) = main_rx.try_recv() {
-                match msg {
-                    MainMsg::InsertCatridge(filename) => {
-                        if machine.insert_catridge(&filename) {
-                            machine.reset();
-                            machine.run();
-                        } else {
-                            core_tx.send(CoreMsg::WantExit).unwrap();
+            machine.update();
+            if now.elapsed().as_millis() >= 1000 {
+                let x = machine.get_cycles();
+                let d = x - cycles;
+                println!("{} cycles/sec ({} fps)", d, d / 29780);
+                cycles = x;
+                if let Ok(msg) = main_rx.try_recv() {
+                    match msg {
+                        MainMsg::InsertCatridge(filename) => {
+                            if machine.insert_catridge(&filename) {
+                                machine.reset();
+                            } else {
+                                core_tx.send(CoreMsg::WantExit).unwrap();
+                                break;
+                            }
+                        }
+                        MainMsg::UpdateInput(c1, c2, c3, c4) => {
+                            println!("Controller State Change: {} {} {} {}", c1, c2, c3, c4);
+                        }
+                        MainMsg::WantExit => {
                             break;
                         }
                     }
-                    MainMsg::UpdateInput(c1, c2, c3, c4) => {
-                        println!("Controller State Change: {} {} {} {}", c1, c2, c3, c4);
-                    }
-                    MainMsg::WantExit => {
-                        break;
-                    }
-                }
+                }                
+                now = Instant::now();
             }
         }
     });    
@@ -150,7 +155,6 @@ fn main() {
             core_thread.join().unwrap();
             break;
         }
-
         if let Ok(msg) = core_rx.try_recv() {
             match msg {
                 CoreMsg::WantExit => { core_thread.join().unwrap(); break; }

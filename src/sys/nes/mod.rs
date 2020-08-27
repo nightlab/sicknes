@@ -23,11 +23,6 @@ pub struct NES {
     _clock_cpu: u32,
 
     is_running: bool,
-
-    pub is_breakpoint: bool,
-    pub breakpoints: Vec<u16>,
-
-    step: bool
 }
 
 impl NES {
@@ -44,12 +39,9 @@ impl NES {
             bus,
             cpu: Mos6502::new(true),
             is_running: false,
-            is_breakpoint: false,
-            breakpoints: Vec::new(),
             name: "Nintendo Entertainment System (Famicom)",
             _clock_master: 21441960,
-            _clock_cpu: 1786830, // Master / 12
-            step: false
+            _clock_cpu: 1786830 // Master / 12
         }
     }
 }
@@ -57,27 +49,27 @@ impl NES {
 impl sys::MemoryAccessA16D8 for Bus {
     fn read_u8(&mut self, address: u16) -> u8 {
         match address {
+            0x8000..=0xffff => {
+                self.mapper.read_u8(address)
+            }
+            0x2000..=0x3fff => {
+                let ra = (address & 0x7) as usize;
+                //println!("READ PPU @ {:#06x} = {:#04x}", address, self.ppu[ra]);
+                self.ppu[ra]
+            }
             0x0000..=0x1fff => {
                 let ra: usize = (address & 0x07ff).into();
                 self.ram[ra]
             }
-            0x2000..=0x3fff => {
-                let ra = (address & 0x7) as usize;
-                println!("READ PPU @ {:#06x} = {:#04x}", address, self.ppu[ra]);
-                self.ppu[ra]
-            }
             0x4000..=0x401f => {
                 let ra = (address & 0xf) as usize;
-                println!("READ APU @ {:#06x} = {:#04x}", address, self.apu[ra]);
+                //println!("READ APU @ {:#06x} = {:#04x}", address, self.apu[ra]);
                 self.apu[ra]
             }
             0x4020..=0x7fff => {
                 println!("BUS ERROR: Invalid read @ {:#06x}", address);
                 self.bus_error = true;
                 0xff
-            }
-            0x8000..=0xffff => {
-                self.mapper.read_u8(address)
             }
         }
     }
@@ -115,37 +107,13 @@ impl sys::Machine for NES {
         self.cpu.reset(&mut self.bus);
     }
 
-    fn run(&mut self) {
-        self.is_running = true;
-        self.step = false;
-    }
-
-    fn stop(&mut self) {
-        self.is_running = false;
-    }
-
-    fn step(&mut self) {
-        self.is_running = true;
-        self.step = true;
-    }
-    
-    fn is_running(&self) -> bool {
-        self.is_running
+    fn get_cycles(&self) -> u32 {
+        self.cpu.cycle
     }
     
     fn update(&mut self) {
-        if self.bus.cart.is_none() {
-            self.is_running = false;
-            return;
-        }
-        self.cpu.step_debug(&mut self.bus);
-        if self.step {
-            self.is_running = false;
-        }
-        if self.bus.bus_error {
-            println!("Halting system! [ {} ]", self.cpu);
-            self.is_running = false;
-        }
+        //self.cpu.step_debug(&mut self.bus);
+        self.cpu.step(&mut self.bus);
     }
     
     fn insert_catridge(&mut self, filename: &str) -> bool {
