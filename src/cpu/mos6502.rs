@@ -18,14 +18,14 @@ bitflags! {
 }
 
 pub struct Mos6502 {
-    a: u8,
-    x: u8,
-    y: u8,
-    s: u8,
+    pub a: u8,
+    pub x: u8,
+    pub y: u8,
+    pub s: u8,
     p: Status,
-    pc: u16,
-    cycle: u32,
-    cfg_iops: bool
+    pub pc: u16,
+    pub cycle: u32,
+    pub cfg_iops: bool
 }
 
 macro_rules! o_inc {
@@ -89,7 +89,6 @@ impl Mos6502 {
         self.s = 0xfd;
         self.p.bits = 0x24; // @todo bit 4 set after reset or not??? 
         self.pc = (bus.read_u8(0xfffd) as u16) << 8 | bus.read_u8(0xfffc) as u16;
-        self.pc = 0xC000;
         self.cycle = 7;
     }
 
@@ -333,6 +332,22 @@ impl Mos6502 {
                         0x3b /* RLA abs,Y */ => { self.dump_abs_y(bus, "*RLA") }
                         0x23 /* RLA (ind,X) */ => { self.dump_idx_x(bus, "*RLA") }
                         0x33 /* RLA (ind),Y */ => { self.dump_ind_y(bus, "*RLA") }
+
+                        0x47 /* SRE zp */ => { self.dump_zp(bus, "*SRE") }
+                        0x57 /* SRE zp,X */ => { self.dump_zp_x(bus, "*SRE") }
+                        0x4f /* SRE abs */ => { self.dump_abs16(bus, "*SRE") }
+                        0x5f /* SRE abs,X */ => { self.dump_abs_x(bus, "*SRE") }
+                        0x5b /* SRE abs,Y */ => { self.dump_abs_y(bus, "*SRE") }
+                        0x43 /* SRE (ind,X) */ => { self.dump_idx_x(bus, "*SRE") }
+                        0x53 /* SRE (ind),Y */ => { self.dump_ind_y(bus, "*SRE") }
+
+                        0x67 /* RRA zp */ => { self.dump_zp(bus, "*RRA") }
+                        0x77 /* RRA zp,X */ => { self.dump_zp_x(bus, "*RRA") }
+                        0x6f /* RRA abs */ => { self.dump_abs16(bus, "*RRA") }
+                        0x7f /* RRA abs,X */ => { self.dump_abs_x(bus, "*RRA") }
+                        0x7b /* RRA abs,Y */ => { self.dump_abs_y(bus, "*RRA") }
+                        0x63 /* RRA (ind,X) */ => { self.dump_idx_x(bus, "*RRA") }
+                        0x73 /* RRA (ind),Y */ => { self.dump_ind_y(bus, "*RRA") }
 
                         _ => { panic!("Invalid opcode {:#04x} [ {} ]", op, self); }
                     }
@@ -629,6 +644,7 @@ impl Mos6502 {
                 6 /*CYCLES*/
             }
 
+            // @todo check!
             0x00 /* BRK */ => {
                 bus.read_u8(self.pc.wrapping_add(1)); // dummy read
                 self.pc = self.pc.wrapping_add(2);
@@ -639,7 +655,6 @@ impl Mos6502 {
                 bus.write_u8(0x100 + self.s as u16, self.p.bits | 0x30);
                 self.s = self.s.wrapping_sub(1);
                 self.pc = (bus.read_u8(0xffff) as u16) << 8 | bus.read_u8(0xfffe) as u16;
-                //panic!("BRK not validated. Here is your chance.");
                 7 /*CYCLES*/
             }
 
@@ -700,6 +715,22 @@ impl Mos6502 {
                         0x23 /* RLA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_rla(bus, a); self.fin(2, 8) }
                         0x33 /* RLA (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_rla(bus, a); self.fin(2, 8) }
 
+                        0x47 /* SRE zp */ => { let a = self.a_imm(bus) as u16; self.oi_sre(bus, a); self.fin(2, 5) }
+                        0x57 /* SRE zp,X */ => { let a = self.a_zp_x(bus); self.oi_sre(bus, a as u16); self.fin(2, 6) }                        
+                        0x4f /* SRE abs */ => { let a = self.a_abs16(bus); self.oi_sre(bus, a); self.fin(3, 6) }
+                        0x5f /* SRE abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_sre(bus, a); self.fin(3, 7) }                        
+                        0x5b /* SRE abs,Y */ => { let a = self.a_abs_y(bus).0; self.oi_sre(bus, a); self.fin(3, 7) }
+                        0x43 /* SRE (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_sre(bus, a); self.fin(2, 8) }
+                        0x53 /* SRE (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_sre(bus, a); self.fin(2, 8) }
+
+                        0x67 /* RRA zp */ => { let a = self.a_imm(bus) as u16; self.oi_rra(bus, a); self.fin(2, 5) }
+                        0x77 /* RRA zp,X */ => { let a = self.a_zp_x(bus); self.oi_rra(bus, a as u16); self.fin(2, 6) }                        
+                        0x6f /* RRA abs */ => { let a = self.a_abs16(bus); self.oi_rra(bus, a); self.fin(3, 6) }
+                        0x7f /* RRA abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_rra(bus, a); self.fin(3, 7) }                        
+                        0x7b /* RRA abs,Y */ => { let a = self.a_abs_y(bus).0; self.oi_rra(bus, a); self.fin(3, 7) }
+                        0x63 /* RRA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_rra(bus, a); self.fin(2, 8) }
+                        0x73 /* RRA (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_rra(bus, a); self.fin(2, 8) }
+
                         _ => { panic!("Invalid opcode {:#04x} [ {} ]", op, self); }
                     }
                 } else {
@@ -732,6 +763,15 @@ impl Mos6502 {
         self.a = self.o_adc(self.a, !op); // SBC
     }
 
+    // lsr + eor
+    pub fn oi_sre(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
+        let op = bus.read_u8(adr);
+        let res = op >> 1;
+        self.p.set(Status::CARRY, op & 0x01 > 0);
+        bus.write_u8(adr as u16, res);
+        self.o_xor(res);
+    }
+
     // asl + ora
     pub fn oi_slo(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
         let op = bus.read_u8(adr);
@@ -753,6 +793,22 @@ impl Mos6502 {
         self.p.set(Status::CARRY, op & 0x80 > 0);
         bus.write_u8(adr as u16, res);
         self.o_and(res);
+    }
+
+    // ror + adc
+    pub fn oi_rra(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
+        let op = bus.read_u8(adr);
+        let res;
+        if self.p.contains(Status::CARRY) {
+            res = (op >> 1) | 0x80;
+            self.p.set(Status::NEGATIVE, true);
+        } else {
+            res = op >> 1;
+            self.p.set(Status::NEGATIVE, false);
+        }
+        self.p.set(Status::CARRY, op & 0x01 > 0);
+        bus.write_u8(adr as u16, res);
+        self.a = self.o_adc(self.a, res);
     }
 
     // relative addressing: sign extend and calc pc offset
@@ -948,7 +1004,7 @@ impl Mos6502 {
         2
     }
     
-    pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
+    pub fn step_debug(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
         let op = bus.read_u8(self.pc);
         let (s, _) = self.debug_op(bus, op);
         println!("{:04X}            {:<32} {}             CYC:{}", self.pc, s, self, self.cycle);
@@ -956,5 +1012,10 @@ impl Mos6502 {
         /*if self.pc == 0xe1a3 {
             panic!("BREAKPOINT");
         }*/
+    }
+
+    pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
+        let op = bus.read_u8(self.pc);
+        self.cycle = self.cycle + self.exec_op(bus, op);
     }
 }

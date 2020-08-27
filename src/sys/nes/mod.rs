@@ -5,17 +5,19 @@ pub mod cartridge;
 pub use cartridge::*;
 
 pub struct Bus {
-    ram: [u8; 2048],
+    pub ram: [u8; 2048],
+    pub apu: [u8; 16],
+    pub ppu: [u8; 8],
     cart: Option<NesCartridge>,
     mapper: Box<dyn MapperAccess>,
-    bus_error: bool
+    pub bus_error: bool
 }
 
 pub struct NES {
     name: &'static str,
 
-    cpu: Mos6502,
-    bus: Bus,
+    pub cpu: Mos6502,
+    pub bus: Bus,
     
     _clock_master: u32,
     _clock_cpu: u32,
@@ -32,6 +34,8 @@ impl NES {
     pub fn new() -> NES {
         let bus = Bus {
             ram: [0; 2048],
+            apu: [0; 16],
+            ppu: [0; 8],
             mapper: Box::new(MapperDummy {}),
             cart: None,
             bus_error: false
@@ -57,7 +61,17 @@ impl sys::MemoryAccessA16D8 for Bus {
                 let ra: usize = (address & 0x07ff).into();
                 self.ram[ra]
             }
-            0x2000..=0x7fff => {
+            0x2000..=0x3fff => {
+                let ra = (address & 0x7) as usize;
+                println!("READ PPU @ {:#06x} = {:#04x}", address, self.ppu[ra]);
+                self.ppu[ra]
+            }
+            0x4000..=0x401f => {
+                let ra = (address & 0xf) as usize;
+                println!("READ APU @ {:#06x} = {:#04x}", address, self.apu[ra]);
+                self.apu[ra]
+            }
+            0x4020..=0x7fff => {
                 println!("BUS ERROR: Invalid read @ {:#06x}", address);
                 self.bus_error = true;
                 0xff
@@ -73,7 +87,17 @@ impl sys::MemoryAccessA16D8 for Bus {
                 let ra: usize = (address & 0x07ff).into();
                 self.ram[ra] = data;
             }
-            0x2000..=0xffff => {
+            0x2000..=0x3fff => {
+                let ra = (address & 0x7) as usize;
+                println!("WRITE PPU @ {:#06x} = {:#04x}", address, data);
+                self.ppu[ra] = data;
+            }
+            0x4000..=0x401f => {
+                let ra = (address & 0xf) as usize;
+                println!("WRITE APU @ {:#06x} = {:#04x}", address, data);
+                self.apu[ra] = data;
+            }
+            0x4020..=0xffff => {
                 println!("BUS ERROR: Invalid write {:#04x} @ {:#06x}", data, address);
                 self.bus_error = true;
             }
@@ -114,7 +138,7 @@ impl sys::Machine for NES {
             self.is_running = false;
             return;
         }
-        self.cpu.step(&mut self.bus);
+        self.cpu.step_debug(&mut self.bus);
         if self.step {
             self.is_running = false;
         }
