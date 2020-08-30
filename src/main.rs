@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 extern crate piston_window;
 
 #[macro_use]
@@ -11,7 +13,7 @@ mod tests;
 
 use clap::{App, crate_version, crate_authors, crate_description};
 use std::{thread};
-use std::time::{Instant};
+use std::time::{Instant, Duration};
 use std::sync::mpsc::channel;
 use std::panic;
 use std::process;
@@ -64,7 +66,11 @@ fn main() {
         let mut now = Instant::now();
         let mut cycles: u32 = 0;
         loop {
-            machine.update();
+            if machine.is_running() {
+                machine.update();
+            } else {
+                thread::sleep(Duration::from_millis(10));
+            }
             if now.elapsed().as_millis() >= 1000 {
                 let x = machine.get_cycles();
                 let d = x - cycles;
@@ -75,6 +81,7 @@ fn main() {
                         MainMsg::InsertCatridge(filename) => {
                             if machine.insert_catridge(&filename) {
                                 machine.reset();
+                                machine.start();
                             } else {
                                 core_tx.send(CoreMsg::WantExit).unwrap();
                                 break;

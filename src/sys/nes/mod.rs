@@ -4,10 +4,19 @@ use crate::cpu::Mos6502;
 pub mod cartridge;
 pub use cartridge::*;
 
+pub mod ppu;
+pub use ppu::*;
+
+pub trait BusControl {
+    fn update(&mut self, cycles: u32);
+}
+
 pub struct Bus {
     pub ram: [u8; 2048],
+
     pub apu: [u8; 16],
-    pub ppu: [u8; 8],
+    pub ppu: PPU,
+
     cart: Option<NesCartridge>,
     mapper: Box<dyn MapperAccess>,
     pub bus_error: bool
@@ -18,44 +27,48 @@ pub struct NES {
 
     pub cpu: Mos6502,
     pub bus: Bus,
-    
-    _clock_master: u32,
-    _clock_cpu: u32,
 
+    ppu_rem: u32,
+    
     is_running: bool,
 }
 
 impl NES {
     pub fn new() -> NES {
-        let bus = Bus {
-            ram: [0; 2048],
-            apu: [0; 16],
-            ppu: [0; 8],
-            mapper: Box::new(MapperDummy {}),
-            cart: None,
-            bus_error: false
-        };
         NES {
-            bus,
+            bus: Bus::new(),
             cpu: Mos6502::new(true),
             is_running: false,
             name: "Nintendo Entertainment System (Famicom)",
-            _clock_master: 21441960,
-            _clock_cpu: 1786830 // Master / 12
+            ppu_rem: 0
+        }
+    }
+}
+
+impl Bus {
+    fn new() -> Bus {
+        Bus {
+            ram: [0; 2048],
+            apu: [0; 16],
+            ppu: PPU::new(),
+            mapper: Box::new(MapperDummy {}),
+            cart: None,
+            bus_error: false
         }
     }
 }
 
 impl sys::MemoryAccessA16D8 for Bus {
-    fn read_u8(&mut self, address: u16) -> u8 {
+    fn read_u8(&mut self, address: u16, dummy: bool) -> u8 {
         match address {
             0x8000..=0xffff => {
-                self.mapper.read_u8(address)
+                self.mapper.read_prg_u8(address)
             }
             0x2000..=0x3fff => {
-                let ra = (address & 0x7) as usize;
-                //println!("READ PPU @ {:#06x} = {:#04x}", address, self.ppu[ra]);
-                self.ppu[ra]
+                if dummy {
+                    return 0xff;
+                }
+                self.ppu.reg_read(&mut self.mapper, (address & 0x7) as u8)
             }
             0x0000..=0x1fff => {
                 let ra: usize = (address & 0x07ff).into();
@@ -73,6 +86,7 @@ impl sys::MemoryAccessA16D8 for Bus {
             }
         }
     }
+
     fn write_u8(&mut self, address: u16, data: u8) {
         match address {
             0x0000..=0x1fff => {
@@ -80,13 +94,12 @@ impl sys::MemoryAccessA16D8 for Bus {
                 self.ram[ra] = data;
             }
             0x2000..=0x3fff => {
-                let ra = (address & 0x7) as usize;
-                println!("WRITE PPU @ {:#06x} = {:#04x}", address, data);
-                self.ppu[ra] = data;
+                //println!("WRITE PPU @ {:#06x} = {:#04x}", address, data);
+                self.ppu.reg_write(&mut self.mapper, (address & 0x7) as u8, data);
             }
             0x4000..=0x401f => {
                 let ra = (address & 0xf) as usize;
-                println!("WRITE APU @ {:#06x} = {:#04x}", address, data);
+                //println!("WRITE APU @ {:#06x} = {:#04x}", address, data);
                 self.apu[ra] = data;
             }
             0x4020..=0xffff => {
@@ -110,10 +123,24 @@ impl sys::Machine for NES {
     fn get_cycles(&self) -> u32 {
         self.cpu.cycle
     }
+
+    fn start(&mut self) {
+        self.is_running = true;
+    }
+
+    fn is_running(&self) -> bool {
+        self.is_running
+    }
     
     fn update(&mut self) {
-        //self.cpu.step_debug(&mut self.bus);
-        self.cpu.step(&mut self.bus);
+        let cc;
+        if self.bus.ppu.nmi_pending {
+            cc = self.cpu.interrupt(true, &mut self.bus);
+            self.bus.ppu.nmi_pending = false;
+        } else {
+            cc = self.cpu.step(&mut self.bus);
+        }
+        self.bus.ppu.update(&mut self.bus.mapper, cc * 3);
     }
     
     fn insert_catridge(&mut self, filename: &str) -> bool {

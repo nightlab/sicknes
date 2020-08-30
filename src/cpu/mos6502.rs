@@ -88,7 +88,7 @@ impl Mos6502 {
         self.y = 0;
         self.s = 0xfd;
         self.p.bits = 0x24; // @todo bit 4 set after reset or not??? 
-        self.pc = (bus.read_u8(0xfffd) as u16) << 8 | bus.read_u8(0xfffc) as u16;
+        self.pc = (bus.read_u8(0xfffd, false) as u16) << 8 | bus.read_u8(0xfffc, false) as u16;
         self.cycle = 7;
     }
 
@@ -360,58 +360,58 @@ impl Mos6502 {
 
     pub fn dump_zp(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let a = self.a_imm(bus);
-        (format!("{} ${:02X} = {:02X}", mnemonic, a, bus.read_u8(a as u16)), 2)
+        (format!("{} ${:02X} = {:02X}", mnemonic, a, bus.read_u8(a as u16, true)), 2)
     }
 
     pub fn dump_zp_x(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
-        let base = bus.read_u8(self.pc.wrapping_add(1));
+        let base = bus.read_u8(self.pc.wrapping_add(1), true);
         let adr = base.wrapping_add(self.x);
-        (format!("{} ${:02X},X @ ${:02X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr as u16)), 2)
+        (format!("{} ${:02X},X @ ${:02X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr as u16, false)), 2)
     }
 
     pub fn dump_zp_y(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
-        let base = bus.read_u8(self.pc.wrapping_add(1));
+        let base = bus.read_u8(self.pc.wrapping_add(1), true);
         let adr = base.wrapping_add(self.y);
-        (format!("{} ${:02X},X @ ${:02X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr as u16)), 2)
+        (format!("{} ${:02X},X @ ${:02X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr as u16, false)), 2)
     }
 
     pub fn dump_idx_x(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let z = self.a_imm(bus);
         let a = self.a_idx_x(bus) as u16;
-        (format!("{} (${:02X},X) @ {:02X} = {:04X} = {:02X}", mnemonic, z, z.wrapping_add(self.x), a, bus.read_u8(a as u16)), 2)
+        (format!("{} (${:02X},X) @ {:02X} = {:04X} = {:02X}", mnemonic, z, z.wrapping_add(self.x), a, bus.read_u8(a as u16, true)), 2)
     }
 
     pub fn dump_ind_y(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
-        let zp_adr = bus.read_u8(self.pc.wrapping_add(1));
-        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16) as u16) << 8 | bus.read_u8(zp_adr as u16) as u16;
+        let zp_adr = bus.read_u8(self.pc.wrapping_add(1), false);
+        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16, false) as u16) << 8 | bus.read_u8(zp_adr as u16, false) as u16;
         let adr = base.wrapping_add(self.y as u16);
-        (format!("{} (${:02X}),Y = {:04X} @ {:04X} = {:02X}", mnemonic, zp_adr, base, adr, bus.read_u8(adr)), 2)
+        (format!("{} (${:02X}),Y = {:04X} @ {:04X} = {:02X}", mnemonic, zp_adr, base, adr, bus.read_u8(adr, true)), 2)
     }
 
     pub fn dump_abs16(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let a = self.a_abs16(bus);
-        (format!("{} ${:04X} = {:02X}", mnemonic, a, bus.read_u8(a as u16)), 2)
+        (format!("{} ${:04X} = {:02X}", mnemonic, a, bus.read_u8(a as u16, true)), 2)
     }
 
     pub fn dump_abs_x(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let base = self.a_abs16(bus);
         let adr = base.wrapping_add(self.y as u16);
-        (format!("{} ${:04X},X @ {:04X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr)), 3)
+        (format!("{} ${:04X},X @ {:04X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr, true)), 3)
     }
 
     pub fn dump_abs_y(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let base = self.a_abs16(bus);
         let adr = base.wrapping_add(self.y as u16);
-        (format!("{} ${:04X},Y @ {:04X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr)), 3)
+        (format!("{} ${:04X},Y @ {:04X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr, true)), 3)
     }
 
     pub fn dump_abs_ind(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let base = self.a_abs16(bus);
         let target;
         if base & 0xff == 0xff {
-            target = (bus.read_u8(base & 0xff00) as u16) << 8 | bus.read_u8(base) as u16;
+            target = (bus.read_u8(base & 0xff00, false) as u16) << 8 | bus.read_u8(base, false) as u16;
         } else {
-            target = (bus.read_u8(base + 1) as u16) << 8 | bus.read_u8(base) as u16;
+            target = (bus.read_u8(base + 1, false) as u16) << 8 | bus.read_u8(base, false) as u16;
         }
         (format!("{} (${:04X}) = {:04X}", mnemonic, base, target), 3)
     }
@@ -424,26 +424,48 @@ impl Mos6502 {
         (format!("{} ${:04X}", mnemonic, self.a_rel(bus)), 2)
     }
 
+    // execute nmi
+    pub fn interrupt(&mut self, is_nmi: bool, bus: &mut dyn sys::MemoryAccessA16D8) -> u32 {
+        bus.write_u8(0x100 + self.s as u16, (self.pc >> 8) as u8);
+        self.s = self.s.wrapping_sub(1);
+        bus.write_u8(0x100 + self.s as u16, (self.pc & 0xff) as u8);
+        self.s = self.s.wrapping_sub(1);
+        bus.write_u8(0x100 + self.s as u16, self.p.bits | 0x30);
+        self.s = self.s.wrapping_sub(1);
+        self.p.remove(Status::B);
+        self.p.insert(Status::INT_DIS);
+        let target;
+        if is_nmi {
+            target = (bus.read_u8(0xfffb, false) as u16) << 8 | bus.read_u8(0xfffa, false) as u16;
+            //println!("CPU: NMI @ ${:06X} STATUS=${:04X} -> ${:06X}", self.pc, self.p, target);
+        } else {
+            target = (bus.read_u8(0xffff, false) as u16) << 8 | bus.read_u8(0xfffe, false) as u16;
+            //println!("CPU: IRQ @ ${:06X} STATUS=${:04X} -> ${:06X}", self.pc, self.p, target);
+        }
+        self.pc = target;
+        7
+    }
+
     // execute opcode
     pub fn exec_op(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, op: u8) -> u32 {
         match op {
             0x08 /* PHP */ => { bus.write_u8(0x100 + self.s as u16, self.p.bits | 0x30); self.s = self.s.wrapping_sub(1); self.fin(1, 3) }
             0x48 /* PHA */ => { bus.write_u8(0x100 + self.s as u16, self.a); self.s = self.s.wrapping_sub(1); self.fin(1, 3) }
-            0x68 /* PLA */ => { self.s = self.s.wrapping_add(1); self.a = bus.read_u8(0x100 + self.s as u16); f_nz!(self, self.a); self.fin(1, 4) }
+            0x68 /* PLA */ => { self.s = self.s.wrapping_add(1); self.a = bus.read_u8(0x100 + self.s as u16, false); f_nz!(self, self.a); self.fin(1, 4) }
             0x28 /* PLP */ => {
                 self.s = self.s.wrapping_add(1);
-                self.p.bits = bus.read_u8(0x100 + self.s as u16) | 0x20;
+                self.p.bits = bus.read_u8(0x100 + self.s as u16, false) | 0x20;
                 self.p.remove(Status::BREAK);
                 self.fin(1, 4)
             }
             
             0x40 /* RTI */ => {
                 self.s = self.s.wrapping_add(1);
-                self.p.bits = bus.read_u8(0x100 + self.s as u16) | 0x20;
+                self.p.bits = bus.read_u8(0x100 + self.s as u16, false) | 0x20;
                 self.s = self.s.wrapping_add(1);
-                let ra = bus.read_u8(0x100 + self.s as u16) as u16;
+                let ra = bus.read_u8(0x100 + self.s as u16, false) as u16;
                 self.s = self.s.wrapping_add(1);
-                self.pc = ra | ((bus.read_u8(0x100 + self.s as u16) as u16) << 8);
+                self.pc = ra | ((bus.read_u8(0x100 + self.s as u16, false) as u16) << 8);
                 6 /*CYCLES*/
             }            
 
@@ -451,9 +473,9 @@ impl Mos6502 {
             0x6c /* JMP (abs) */ => {
                 let base = self.a_abs16(bus);
                 if base & 0xff == 0xff {
-                    self.pc = (bus.read_u8(base & 0xff00) as u16) << 8 | bus.read_u8(base) as u16;
+                    self.pc = (bus.read_u8(base & 0xff00, false) as u16) << 8 | bus.read_u8(base, false) as u16;
                 } else {
-                    self.pc = (bus.read_u8(base + 1) as u16) << 8 | bus.read_u8(base) as u16;
+                    self.pc = (bus.read_u8(base + 1, false) as u16) << 8 | bus.read_u8(base, false) as u16;
                 }
                 5 /*CYCLES*/
             }
@@ -467,16 +489,16 @@ impl Mos6502 {
             0xb8 /* CLV */ => { self.p.remove(Status::OVERFLOW); self.fin(1, 2) }
 
             0xe6 /* INC zp */ => { let (op, adr) = self.a_zp(bus); bus.write_u8(adr, self.o_inc(op)); self.fin(2, 5) }
-            0xf6 /* INC zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16); bus.write_u8(a as u16, self.o_inc(op)); self.fin(2, 6) }
-            0xee /* INC abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a); bus.write_u8(a, self.o_inc(op)); self.fin(3, 6) }
-            0xfe /* INC abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a); bus.write_u8(a, self.o_inc(op)); self.fin(3, 7) }
+            0xf6 /* INC zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_inc(op)); self.fin(2, 6) }
+            0xee /* INC abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_inc(op)); self.fin(3, 6) }
+            0xfe /* INC abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_inc(op)); self.fin(3, 7) }
             0xe8 /* INX */ => { o_inc!(self, x, 1 /*LEN*/); 2 /*CYCLES*/ }
             0xc8 /* INY */ => { o_inc!(self, y, 1 /*LEN*/); 2 /*CYCLES*/ }
             
             0xc6 /* DEC zp */ => { let (op, adr) = self.a_zp(bus); bus.write_u8(adr, self.o_dec(op)); self.fin(2, 5) }
-            0xd6 /* DEC zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16); bus.write_u8(a as u16, self.o_dec(op)); self.fin(2, 6) }
-            0xce /* DEC abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a); bus.write_u8(a, self.o_dec(op)); self.fin(3, 6) }
-            0xde /* DEC abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a); bus.write_u8(a, self.o_dec(op)); self.fin(3, 7) }
+            0xd6 /* DEC zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_dec(op)); self.fin(2, 6) }
+            0xce /* DEC abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_dec(op)); self.fin(3, 6) }
+            0xde /* DEC abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_dec(op)); self.fin(3, 7) }
             0xca /* DEX */ => { o_dec!(self, x, 1 /*LEN*/); 2 /*CYCLES*/ }
             0x88 /* DEY */ => { o_dec!(self, y, 1 /*LEN*/); 2 /*CYCLES*/ }
 
@@ -488,114 +510,114 @@ impl Mos6502 {
             0x98 /* TYA */ => { self.a = self.y; f_nz!(self, self.a); self.fin(1, 2) }
 
             0x24 /* BIT zp */ => { self.o_bit(self.a_zp(bus).0); self.fin(2, 3) }
-            0x2c /* BIT abs */ => { let a = self.a_abs16(bus); self.o_bit(bus.read_u8(a)); self.fin(3, 4) }
+            0x2c /* BIT abs */ => { let a = self.a_abs16(bus); self.o_bit(bus.read_u8(a, false)); self.fin(3, 4) }
 
             0x29 /* AND imm */ => { self.o_and(self.a_imm(bus)); self.fin(2, 2) }
             0x25 /* AND zp */ => { self.o_and(self.a_zp(bus).0); self.fin(2, 3) }
-            0x35 /* AND zp,X */ => { let a = self.a_zp_x(bus); self.o_and(bus.read_u8(a as u16)); self.fin(2, 4) }
-            0x2d /* AND abs */ => { let a = self.a_abs16(bus); self.o_and(bus.read_u8(a)); self.fin(3, 4) }
-            0x3d /* AND abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_and(bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x39 /* AND abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_and(bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x21 /* AND (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_and(bus.read_u8(a)); self.fin(2, 6) }
-            0x31 /* AND (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_and(bus.read_u8(a)); self.fin(2, 5 + xtra) }
+            0x35 /* AND zp,X */ => { let a = self.a_zp_x(bus); self.o_and(bus.read_u8(a as u16, false)); self.fin(2, 4) }
+            0x2d /* AND abs */ => { let a = self.a_abs16(bus); self.o_and(bus.read_u8(a, false)); self.fin(3, 4) }
+            0x3d /* AND abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_and(bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x39 /* AND abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_and(bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x21 /* AND (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_and(bus.read_u8(a, false)); self.fin(2, 6) }
+            0x31 /* AND (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_and(bus.read_u8(a, false)); self.fin(2, 5 + xtra) }
 
             0x09 /* ORA imm */ => { self.o_or(self.a_imm(bus)); self.fin(2, 2) }
             0x05 /* ORA zp */ => { self.o_or(self.a_zp(bus).0); self.fin(2, 3) }
-            0x15 /* ORA zp,X */ => { let a = self.a_zp_x(bus); self.o_or(bus.read_u8(a as u16)); self.fin(2, 4) }
-            0x0d /* ORA abs */ => { let a = self.a_abs16(bus); self.o_or(bus.read_u8(a)); self.fin(3, 4) }
-            0x1d /* ORA abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_or(bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x19 /* ORA abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_or(bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x01 /* ORA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_or(bus.read_u8(a)); self.fin(2, 6) }
-            0x11 /* ORA (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_or(bus.read_u8(a)); self.fin(2, 5 + xtra) }
+            0x15 /* ORA zp,X */ => { let a = self.a_zp_x(bus); self.o_or(bus.read_u8(a as u16, false)); self.fin(2, 4) }
+            0x0d /* ORA abs */ => { let a = self.a_abs16(bus); self.o_or(bus.read_u8(a, false)); self.fin(3, 4) }
+            0x1d /* ORA abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_or(bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x19 /* ORA abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_or(bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x01 /* ORA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_or(bus.read_u8(a, false)); self.fin(2, 6) }
+            0x11 /* ORA (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_or(bus.read_u8(a, false)); self.fin(2, 5 + xtra) }
 
             0x49 /* EOR imm */ => { self.o_xor(self.a_imm(bus)); self.fin(2, 2) }
             0x45 /* EOR zp */ => { self.o_xor(self.a_zp(bus).0); self.fin(2, 3) }
-            0x55 /* EOR zp,X */ => { let a = self.a_zp_x(bus); self.o_xor(bus.read_u8(a as u16)); self.fin(2, 4) }
-            0x4d /* EOR abs */ => { let a = self.a_abs16(bus); self.o_xor(bus.read_u8(a)); self.fin(3, 4) }
-            0x5d /* EOR abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_xor(bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x59 /* EOR abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_xor(bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x41 /* EOR (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_xor(bus.read_u8(a)); self.fin(2, 6) }
-            0x51 /* EOR (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_xor(bus.read_u8(a)); self.fin(2, 5 + xtra) }
+            0x55 /* EOR zp,X */ => { let a = self.a_zp_x(bus); self.o_xor(bus.read_u8(a as u16, false)); self.fin(2, 4) }
+            0x4d /* EOR abs */ => { let a = self.a_abs16(bus); self.o_xor(bus.read_u8(a, false)); self.fin(3, 4) }
+            0x5d /* EOR abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_xor(bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x59 /* EOR abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_xor(bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x41 /* EOR (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_xor(bus.read_u8(a, false)); self.fin(2, 6) }
+            0x51 /* EOR (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_xor(bus.read_u8(a, false)); self.fin(2, 5 + xtra) }
 
             0x0a /* ASL A */ => { self.a = self.o_asl(self.a); self.fin(1, 2) }
             0x06 /* ASL zp */ => { let (op, a) = self.a_zp(bus); bus.write_u8(a, self.o_asl(op)); self.fin(2, 5) }
-            0x16 /* ASL zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16); bus.write_u8(a as u16, self.o_asl(op)); self.fin(2, 6) }
-            0x0e /* ASL abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a); bus.write_u8(a, self.o_asl(op)); self.fin(3, 6) }
-            0x1e /* ASL abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a); bus.write_u8(a, self.o_asl(op)); self.fin(3, 7) }
+            0x16 /* ASL zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_asl(op)); self.fin(2, 6) }
+            0x0e /* ASL abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_asl(op)); self.fin(3, 6) }
+            0x1e /* ASL abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_asl(op)); self.fin(3, 7) }
             
             0x4a /* LSR A */ => { self.a = self.o_lsr(self.a); self.fin(1, 2) }
             0x46 /* LSR zp */ => { let (op, a) = self.a_zp(bus); bus.write_u8(a, self.o_lsr(op)); self.fin(2, 5) }
-            0x56 /* LSR zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16); bus.write_u8(a as u16, self.o_lsr(op)); self.fin(2, 6) }
-            0x4e /* LSR abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a); bus.write_u8(a, self.o_lsr(op)); self.fin(3, 6) }
-            0x5e /* LSR abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a); bus.write_u8(a, self.o_lsr(op)); self.fin(3, 7) }
+            0x56 /* LSR zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_lsr(op)); self.fin(2, 6) }
+            0x4e /* LSR abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_lsr(op)); self.fin(3, 6) }
+            0x5e /* LSR abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_lsr(op)); self.fin(3, 7) }
 
             0x6a /* ROR A */ => { self.a = self.o_ror(self.a); self.fin(1, 2) }
             0x66 /* ROR zp */ => { let (op, adr) = self.a_zp(bus); bus.write_u8(adr, self.o_ror(op)); self.fin(2, 5) }
-            0x76 /* ROR zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16); bus.write_u8(a as u16, self.o_ror(op)); self.fin(2, 6) }
-            0x6e /* ROR abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a); bus.write_u8(a, self.o_ror(op)); self.fin(3, 6) }
-            0x7e /* ROR abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a); bus.write_u8(a, self.o_ror(op)); self.fin(3, 7) }
+            0x76 /* ROR zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_ror(op)); self.fin(2, 6) }
+            0x6e /* ROR abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_ror(op)); self.fin(3, 6) }
+            0x7e /* ROR abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_ror(op)); self.fin(3, 7) }
 
             0x2a /* ROL A */ => { self.a = self.o_rol(self.a); self.fin(1, 2) }
             0x26 /* ROL zp */ => { let (op, adr) = self.a_zp(bus); bus.write_u8(adr, self.o_rol(op)); self.fin(2, 5) }
-            0x36 /* ROL zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16); bus.write_u8(a as u16, self.o_rol(op)); self.fin(2, 6) }
-            0x2e /* ROL abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a); bus.write_u8(a, self.o_rol(op)); self.fin(3, 6) }
-            0x3e /* ROL abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a); bus.write_u8(a, self.o_rol(op)); self.fin(3, 7) }
+            0x36 /* ROL zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_rol(op)); self.fin(2, 6) }
+            0x2e /* ROL abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_rol(op)); self.fin(3, 6) }
+            0x3e /* ROL abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_rol(op)); self.fin(3, 7) }
 
             0x69 /* ADC imm */ => { self.a = self.o_adc(self.a, self.a_imm(bus)); self.fin(2, 2) }
             0x65 /* ADC zp */ => { self.a = self.o_adc(self.a, self.a_zp(bus).0); self.fin(2, 3) }
-            0x75 /* ADC zp,X */ => { let a = self.a_zp_x(bus); self.a = self.o_adc(self.a, bus.read_u8(a as u16)); self.fin(2, 4) }
-            0x6d /* ADC abs */ => { let a = self.a_abs16(bus); self.a = self.o_adc(self.a, bus.read_u8(a)); self.fin(3, 4) }
-            0x7d /* ADC abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = self.o_adc(self.a, bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x79 /* ADC abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = self.o_adc(self.a, bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0x61 /* ADC (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = self.o_adc(self.a, bus.read_u8(a)); self.fin(2, 6) }
-            0x71 /* ADC (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = self.o_adc(self.a, bus.read_u8(a)); self.fin(2, 5 + xtra) }
+            0x75 /* ADC zp,X */ => { let a = self.a_zp_x(bus); self.a = self.o_adc(self.a, bus.read_u8(a as u16, false)); self.fin(2, 4) }
+            0x6d /* ADC abs */ => { let a = self.a_abs16(bus); self.a = self.o_adc(self.a, bus.read_u8(a, false)); self.fin(3, 4) }
+            0x7d /* ADC abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = self.o_adc(self.a, bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x79 /* ADC abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = self.o_adc(self.a, bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0x61 /* ADC (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = self.o_adc(self.a, bus.read_u8(a, false)); self.fin(2, 6) }
+            0x71 /* ADC (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = self.o_adc(self.a, bus.read_u8(a, false)); self.fin(2, 5 + xtra) }
 
             0xc9 /* CMP imm */ => { self.o_cmp(self.a, self.a_imm(bus)); self.fin(2, 2) }
             0xc5 /* CMP zp */ => { self.o_cmp(self.a, self.a_zp(bus).0); self.fin(2, 3) }
-            0xd5 /* CMP zp,X */ => { let a = self.a_zp_x(bus); self.o_cmp(self.a, bus.read_u8(a as u16)); self.fin(2, 4) }
-            0xcd /* CMP abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.a, bus.read_u8(a)); self.fin(3, 4) }
-            0xdd /* CMP abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_cmp(self.a, bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0xd9 /* CMP abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_cmp(self.a, bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0xc1 /* CMP (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_cmp(self.a, bus.read_u8(a)); self.fin(2, 6) }
-            0xd1 /* CMP (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_cmp(self.a, bus.read_u8(a)); self.fin(2, 5 + xtra) }
+            0xd5 /* CMP zp,X */ => { let a = self.a_zp_x(bus); self.o_cmp(self.a, bus.read_u8(a as u16, false)); self.fin(2, 4) }
+            0xcd /* CMP abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.a, bus.read_u8(a, false)); self.fin(3, 4) }
+            0xdd /* CMP abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.o_cmp(self.a, bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0xd9 /* CMP abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.o_cmp(self.a, bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0xc1 /* CMP (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.o_cmp(self.a, bus.read_u8(a, false)); self.fin(2, 6) }
+            0xd1 /* CMP (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.o_cmp(self.a, bus.read_u8(a, false)); self.fin(2, 5 + xtra) }
 
             0xc0 /* CPY imm */ => { self.o_cmp(self.y, self.a_imm(bus)); self.fin(2, 2) }
             0xc4 /* CPY zp */ => { self.o_cmp(self.y, self.a_zp(bus).0); self.fin(2, 3) }
-            0xcc /* CPY abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.y, bus.read_u8(a)); self.fin(3, 4) }
+            0xcc /* CPY abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.y, bus.read_u8(a, false)); self.fin(3, 4) }
             
             0xe0 /* CPX imm */ => { self.o_cmp(self.x, self.a_imm(bus)); self.fin(2, 2) }
             0xe4 /* CPX zp */ => { self.o_cmp(self.x, self.a_zp(bus).0); self.fin(2, 3) }
-            0xec /* CPX abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.x, bus.read_u8(a)); self.fin(3, 4) }
+            0xec /* CPX abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.x, bus.read_u8(a, false)); self.fin(3, 4) }
 
             0xe9 /* SBC imm */ => { self.a = self.o_adc(self.a, !self.a_imm(bus)); self.fin(2, 2) }
             0xe5 /* SBC zp */ => { self.a = self.o_adc(self.a, !self.a_zp(bus).0); self.fin(2, 3) }
-            0xf5 /* SBC zp,X */ => { let a = self.a_zp_x(bus); self.a = self.o_adc(self.a, !bus.read_u8(a as u16)); self.fin(2, 4) }
-            0xed /* SBC abs */ => { let a = self.a_abs16(bus); self.a = self.o_adc(self.a, !bus.read_u8(a)); self.fin(3, 4) }
-            0xfd /* SBC abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = self.o_adc(self.a, !bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0xf9 /* SBC abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = self.o_adc(self.a, !bus.read_u8(a)); self.fin(3, 4 + xtra) }
-            0xe1 /* SBC (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = self.o_adc(self.a, !bus.read_u8(a)); self.fin(2, 6) }
-            0xf1 /* SBC (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = self.o_adc(self.a, !bus.read_u8(a)); self.fin(2, 5 + xtra) }
+            0xf5 /* SBC zp,X */ => { let a = self.a_zp_x(bus); self.a = self.o_adc(self.a, !bus.read_u8(a as u16, false)); self.fin(2, 4) }
+            0xed /* SBC abs */ => { let a = self.a_abs16(bus); self.a = self.o_adc(self.a, !bus.read_u8(a, false)); self.fin(3, 4) }
+            0xfd /* SBC abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = self.o_adc(self.a, !bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0xf9 /* SBC abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = self.o_adc(self.a, !bus.read_u8(a, false)); self.fin(3, 4 + xtra) }
+            0xe1 /* SBC (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = self.o_adc(self.a, !bus.read_u8(a, false)); self.fin(2, 6) }
+            0xf1 /* SBC (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = self.o_adc(self.a, !bus.read_u8(a, false)); self.fin(2, 5 + xtra) }
 
             0xa9 /* LDA imm */ => { self.a = self.a_imm(bus); f_nz!(self, self.a); self.fin(2, 2) }
             0xa5 /* LDA zp */ => { self.a = self.a_zp(bus).0; f_nz!(self, self.a); self.fin(2, 3) }
-            0xb5 /* LDA zp,X */ => { let a = self.a_zp_x(bus); self.a = bus.read_u8(a as u16); f_nz!(self, self.a); self.fin(2, 4) }
-            0xad /* LDA abs */ => { let a = self.a_abs16(bus); self.a = bus.read_u8(a); f_nz!(self, self.a); self.fin(3, 4) }
-            0xbd /* LDA abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = bus.read_u8(a); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
-            0xb9 /* LDA abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = bus.read_u8(a); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
-            0xa1 /* LDA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = bus.read_u8(a); f_nz!(self, self.a); self.fin(2, 6) }
-            0xb1 /* LDA (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = bus.read_u8(a); f_nz!(self, self.a); self.fin(2, 5 + xtra) }
+            0xb5 /* LDA zp,X */ => { let a = self.a_zp_x(bus); self.a = bus.read_u8(a as u16, false); f_nz!(self, self.a); self.fin(2, 4) }
+            0xad /* LDA abs */ => { let a = self.a_abs16(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4) }
+            0xbd /* LDA abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
+            0xb9 /* LDA abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
+            0xa1 /* LDA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(2, 6) }
+            0xb1 /* LDA (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(2, 5 + xtra) }
 
             0xa2 /* LDX imm */ => { self.x = self.a_imm(bus); f_nz!(self, self.x); self.fin(2, 2) }
             0xa6 /* LDX zp */ => { self.x = self.a_zp(bus).0; f_nz!(self, self.x); self.fin(2, 3) }
-            0xb6 /* LDX zp,Y */ => { let a = self.a_zp_y(bus); self.x = bus.read_u8(a as u16); f_nz!(self, self.x); self.fin(2, 4) }
-            0xae /* LDX abs */ => { let a = self.a_abs16(bus); self.x = bus.read_u8(a); f_nz!(self, self.x); self.fin(3, 4) }
-            0xbe /* LDX abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.x = bus.read_u8(a); f_nz!(self, self.x); self.fin(3, 4 + xtra) }
+            0xb6 /* LDX zp,Y */ => { let a = self.a_zp_y(bus); self.x = bus.read_u8(a as u16, false); f_nz!(self, self.x); self.fin(2, 4) }
+            0xae /* LDX abs */ => { let a = self.a_abs16(bus); self.x = bus.read_u8(a, false); f_nz!(self, self.x); self.fin(3, 4) }
+            0xbe /* LDX abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.x = bus.read_u8(a, false); f_nz!(self, self.x); self.fin(3, 4 + xtra) }
 
             0xa0 /* LDY imm */ => { self.y = self.a_imm(bus); f_nz!(self, self.y); self.fin(2, 2) }
             0xa4 /* LDY zp */ => { self.y = self.a_zp(bus).0; f_nz!(self, self.y); self.fin(2, 3) }
-            0xb4 /* LDY zp,X */ => { let a = self.a_zp_x(bus); self.y = bus.read_u8(a as u16); f_nz!(self, self.y); self.fin(2, 4) }
-            0xac /* LDY abs */ => { let a = self.a_abs16(bus); self.y = bus.read_u8(a); f_nz!(self, self.y); self.fin(3, 4) }
-            0xbc /* LDY abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.y = bus.read_u8(a); f_nz!(self, self.y); self.fin(3, 4 + xtra) }
+            0xb4 /* LDY zp,X */ => { let a = self.a_zp_x(bus); self.y = bus.read_u8(a as u16, false); f_nz!(self, self.y); self.fin(2, 4) }
+            0xac /* LDY abs */ => { let a = self.a_abs16(bus); self.y = bus.read_u8(a, false); f_nz!(self, self.y); self.fin(3, 4) }
+            0xbc /* LDY abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.y = bus.read_u8(a, false); f_nz!(self, self.y); self.fin(3, 4 + xtra) }
 
             0x85 /* STA zp */ => { o_store_zp!(self, bus, a, 2 /*LEN*/); 3 /*CYCLES*/ }
             0x95 /* STA zp,X */ => { let a = self.a_zp_x(bus); bus.write_u8(a as u16, self.a); self.fin(2, 4) }
@@ -637,16 +659,16 @@ impl Mos6502 {
 
             0x60 /* RTS */ => {
                 self.s = self.s.wrapping_add(1);
-                let mut ra = bus.read_u8(0x100 + self.s as u16) as u16;
+                let mut ra = bus.read_u8(0x100 + self.s as u16, false) as u16;
                 self.s = self.s.wrapping_add(1);
-                ra = ra | ((bus.read_u8(0x100 + self.s as u16) as u16) << 8);
+                ra = ra | ((bus.read_u8(0x100 + self.s as u16, false) as u16) << 8);
                 self.pc = ra.wrapping_add(1);
                 6 /*CYCLES*/
             }
 
             // @todo check!
             0x00 /* BRK */ => {
-                bus.read_u8(self.pc.wrapping_add(1)); // dummy read
+                bus.read_u8(self.pc.wrapping_add(1), false); // dummy read
                 self.pc = self.pc.wrapping_add(2);
                 bus.write_u8(0x100 + self.s as u16, (self.pc >> 8) as u8);
                 self.s = self.s.wrapping_sub(1);
@@ -654,7 +676,7 @@ impl Mos6502 {
                 self.s = self.s.wrapping_sub(1);
                 bus.write_u8(0x100 + self.s as u16, self.p.bits | 0x30);
                 self.s = self.s.wrapping_sub(1);
-                self.pc = (bus.read_u8(0xffff) as u16) << 8 | bus.read_u8(0xfffe) as u16;
+                self.pc = (bus.read_u8(0xffff, false) as u16) << 8 | bus.read_u8(0xfffe, false) as u16;
                 7 /*CYCLES*/
             }
 
@@ -665,7 +687,7 @@ impl Mos6502 {
                         0x1a | 0x3a | 0x5a | 0x7a | 0xda | 0xfa /* NOP */ => { self.fin(1, 2) }
                         0x80 /* NOP imm */ => { self.a_imm(bus); self.fin(2, 2) }
                         0x04 | 0x44 | 0x64 /* NOP zp */ => { self.a_zp(bus); self.fin(2, 3) }
-                        0x0c /* NOP abs */ => { let a = self.a_abs16(bus); bus.read_u8(a); self.fin(3, 4) }
+                        0x0c /* NOP abs */ => { let a = self.a_abs16(bus); bus.read_u8(a, false); self.fin(3, 4) }
                         0x1c | 0x3c | 0x5c | 0x7c | 0xdc | 0xfc /* NOP abs,X */ => { let (_, xtra) = self.a_abs_x(bus); self.fin(3, 4 + xtra) }
                         0x14 | 0x34 | 0x54 | 0x74 | 0xd4 | 0xf4 /* NOP zp,X */ => { self.a_zp_x(bus); self.fin(2, 4) }
 
@@ -742,7 +764,7 @@ impl Mos6502 {
 
     // lda + ldx
     pub fn oi_lax(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16, size: u16, cycles: u32) -> u32 {
-        self.a = bus.read_u8(adr as u16);
+        self.a = bus.read_u8(adr as u16, false);
         self.x = self.a;
         f_nz!(self, self.a);
         self.pc = self.pc.wrapping_add(size);
@@ -751,21 +773,21 @@ impl Mos6502 {
 
     // dec + cmp
     pub fn oi_dcp(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
-        let op = bus.read_u8(adr).wrapping_sub(1); // DEC
+        let op = bus.read_u8(adr, false).wrapping_sub(1); // DEC
         bus.write_u8(adr as u16, op); // STORE
         self.o_cmp(self.a, op); // CMP
     }
 
     // inc + sbc
     pub fn oi_isb(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
-        let op = bus.read_u8(adr).wrapping_add(1); // DEC
+        let op = bus.read_u8(adr, false).wrapping_add(1); // DEC
         bus.write_u8(adr as u16, op); // STORE
         self.a = self.o_adc(self.a, !op); // SBC
     }
 
     // lsr + eor
     pub fn oi_sre(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
-        let op = bus.read_u8(adr);
+        let op = bus.read_u8(adr, false);
         let res = op >> 1;
         self.p.set(Status::CARRY, op & 0x01 > 0);
         bus.write_u8(adr as u16, res);
@@ -774,7 +796,7 @@ impl Mos6502 {
 
     // asl + ora
     pub fn oi_slo(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
-        let op = bus.read_u8(adr);
+        let op = bus.read_u8(adr, false);
         self.p.set(Status::CARRY, op & 0x80 > 0);
         let res = op << 1;
         bus.write_u8(adr as u16, res);
@@ -783,7 +805,7 @@ impl Mos6502 {
 
     // rol + and
     pub fn oi_rla(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
-        let op = bus.read_u8(adr);
+        let op = bus.read_u8(adr, false);
         let res;
         if self.p.contains(Status::CARRY) {
             res = (op << 1) | 0x01;
@@ -797,7 +819,7 @@ impl Mos6502 {
 
     // ror + adc
     pub fn oi_rra(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16) {
-        let op = bus.read_u8(adr);
+        let op = bus.read_u8(adr, false);
         let res;
         if self.p.contains(Status::CARRY) {
             res = (op >> 1) | 0x80;
@@ -813,24 +835,24 @@ impl Mos6502 {
 
     // relative addressing: sign extend and calc pc offset
     pub fn a_rel(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u16 {
-        let offset = bus.read_u8(self.pc.wrapping_add(1)) as u16;
+        let offset = bus.read_u8(self.pc.wrapping_add(1), false) as u16;
         self.pc.wrapping_add(2 + if offset & 0x80 == 0x80 { 0xff00 | offset } else { offset })
     }
 
     // zeropage addressing
     pub fn a_imm(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
-        bus.read_u8(self.pc.wrapping_add(1))
+        bus.read_u8(self.pc.wrapping_add(1), false)
     }
 
     // absolute addressing (address)
     pub fn a_abs16(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u16 {
-        (bus.read_u8(self.pc.wrapping_add(2)) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1)) as u16
+        (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1), false) as u16
     }
 
     // absolute x-indexed
     // returns: address + extra cycle for page boundary
     pub fn a_abs_x(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u16, u32) {
-        let base = (bus.read_u8(self.pc.wrapping_add(2)) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1)) as u16;
+        let base = (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1), false) as u16;
         let adr = base.wrapping_add(self.x as u16);
         (adr, ((adr & 0xff00) != (base & 0xff00)) as u32)
     }
@@ -838,7 +860,7 @@ impl Mos6502 {
     // absolute y-indexed
     // returns: address + extra cycle for page boundary
     pub fn a_abs_y(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u16, u32) {
-        let base = (bus.read_u8(self.pc.wrapping_add(2)) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1)) as u16;
+        let base = (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1), false) as u16;
         let adr = base.wrapping_add(self.y as u16);
         (adr, ((adr & 0xff00) != (base & 0xff00)) as u32)
     }
@@ -846,32 +868,32 @@ impl Mos6502 {
     // zeropage addressing (operand + address)
     // returns: value + address
     pub fn a_zp(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u8, u16) {
-        let adr = bus.read_u8(self.pc.wrapping_add(1)) as u16;
-        (bus.read_u8(adr), adr)
+        let adr = bus.read_u8(self.pc.wrapping_add(1), false) as u16;
+        (bus.read_u8(adr, false), adr)
     }
 
     // zeropage x-indexed addressing
     pub fn a_zp_x(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
-        bus.read_u8(self.pc.wrapping_add(1)).wrapping_add(self.x)
+        bus.read_u8(self.pc.wrapping_add(1), false).wrapping_add(self.x)
     }
 
     // zeropage y-indexed addressing
     pub fn a_zp_y(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
-        bus.read_u8(self.pc.wrapping_add(1)).wrapping_add(self.y)
+        bus.read_u8(self.pc.wrapping_add(1), false).wrapping_add(self.y)
     }
 
     // indexed indirect x
     // returns: address
     pub fn a_idx_x(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u16 {
-        let base: u8 = bus.read_u8(self.pc.wrapping_add(1)).wrapping_add(self.x);
-        (bus.read_u8(base.wrapping_add(1) as u16) as u16) << 8 | bus.read_u8(base as u16) as u16
+        let base: u8 = bus.read_u8(self.pc.wrapping_add(1), false).wrapping_add(self.x);
+        (bus.read_u8(base.wrapping_add(1) as u16, false) as u16) << 8 | bus.read_u8(base as u16, false) as u16
     }
 
     // indirect indexed y
     // returns: address + extra cycle for page boundary
     pub fn a_ind_y(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u16, u32) {
-        let zp_adr = bus.read_u8(self.pc.wrapping_add(1));
-        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16) as u16) << 8 | bus.read_u8(zp_adr as u16) as u16;
+        let zp_adr = bus.read_u8(self.pc.wrapping_add(1), false);
+        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16, false) as u16) << 8 | bus.read_u8(zp_adr as u16, false) as u16;
         let adr = base.wrapping_add(self.y as u16);
         (adr, ((adr & 0xff00) != (base & 0xff00)) as u32)
     }    
@@ -1004,18 +1026,22 @@ impl Mos6502 {
         2
     }
     
-    pub fn step_debug(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
-        let op = bus.read_u8(self.pc);
+    pub fn step_debug(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) -> u32 {
+        let op = bus.read_u8(self.pc, false);
         let (s, _) = self.debug_op(bus, op);
         println!("{:04X}            {:<32} {}             CYC:{}", self.pc, s, self, self.cycle);
-        self.cycle = self.cycle + self.exec_op(bus, op);
+        let cc = self.exec_op(bus, op);
         /*if self.pc == 0xe1a3 {
             panic!("BREAKPOINT");
         }*/
+        self.cycle = self.cycle + cc;
+        cc
     }
 
-    pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) {
-        let op = bus.read_u8(self.pc);
-        self.cycle = self.cycle + self.exec_op(bus, op);
+    pub fn step(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) -> u32 {
+        let op = bus.read_u8(self.pc, false);
+        let cc = self.exec_op(bus, op);
+        self.cycle = self.cycle + cc;
+        cc
     }
 }

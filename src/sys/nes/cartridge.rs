@@ -4,22 +4,35 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 
+#[derive(Debug)]
+enum Mirroring {
+    VERTICAL,
+    HORIZONTAL,
+    FOURSCREEN,
+    SINGLE
+}
+
 pub struct CatridgeData {
+    mirroring: Mirroring,
     pub prg: Vec<u8>,
     pub chr: Vec<u8>
 }
 
 pub trait MapperAccess {
-    fn read_u8(&self, address: u16) -> u8;
-    fn write_u8(&self, address: u16, data: u8);
+    fn read_prg_u8(&mut self, address: u16) -> u8;
+    fn write_prg_u8(&mut self, address: u16, data: u8);
+    fn read_chr_u8(&mut self, vram: &[u8], address: u16) -> u8;
+    fn write_chr_u8(&mut self, vram: &mut [u8], address: u16, data: u8);
 }
 
 pub struct MapperDummy {
 }
 
 impl MapperAccess for MapperDummy {
-    fn read_u8(&self, _address: u16) -> u8 { return 0; }
-    fn write_u8(&self, _address: u16, _data: u8) { }
+    fn read_prg_u8(&mut self, _address: u16) -> u8 { return 0; }
+    fn write_prg_u8(&mut self, _address: u16, _data: u8) { }
+    fn read_chr_u8(&mut self, _vram: &[u8], _address: u16) -> u8 { return 0; }
+    fn write_chr_u8(&mut self, _vram: &mut [u8], _address: u16, _data: u8) { }
 }
 
 pub struct MapperNROM {
@@ -27,10 +40,72 @@ pub struct MapperNROM {
 }
 
 impl MapperAccess for MapperNROM {
-    fn read_u8(&self, address: u16) -> u8 {
+    fn read_prg_u8(&mut self, address: u16) -> u8 {
         return self.data.prg[(address & 0x7fff) as usize];
     }
-    fn write_u8(&self, _address: u16, _data: u8) {
+
+    fn write_prg_u8(&mut self, address: u16, data: u8) {
+        panic!("NROM: INVALID WRITE ON CPU-BUS @ {:#06x} = {:#04x}", address, data);
+    }
+
+    fn read_chr_u8(&mut self, ciram: &[u8], address: u16) -> u8 {
+        match address {
+            // maps to chr rom
+            0x0000..=0x1FFF => {
+                return self.data.chr[address as usize];
+            }
+
+            // maps to ppu vram
+            0x2000..=0x3EFF => {
+                let a = (address - 0x2000) & 0x0fff;
+                match self.data.mirroring {
+                    Mirroring::VERTICAL => {
+                        return ciram[(a & 0x7ff) as usize];
+                    }
+                    Mirroring::HORIZONTAL => {
+                        if a >= 0x800 {
+                            return ciram[(0x400 + (a & 0x3ff)) as usize];
+                        } else {
+                            return ciram[(a & 0x3ff) as usize];
+                        }
+                    }
+                    Mirroring::FOURSCREEN => { panic!("Four Screen Mirroring not supported by this mapper"); }
+                    Mirroring::SINGLE => { panic!("Single Screen Mirroring not supported by this mapper"); }
+                }
+            }
+
+            _ => { panic!("NROM: INVALID READ ON PPU-BUS @ {:#06x}", address); }
+        }
+    }
+
+    fn write_chr_u8(&mut self, ciram: &mut [u8], address: u16, data: u8) {
+        match address {
+            // maps to chr rom
+            0x0000..=0x1FFF => {
+                panic!("NROM: WRITE ROM ON PPU-BUS @ {:#06x} = {:#04x}", address, data);
+            }
+
+            // maps to ppu vram
+            0x2000..=0x3EFF => {
+                let a = (address - 0x2000) & 0x0fff;
+                match self.data.mirroring {
+                    Mirroring::VERTICAL => {
+                        ciram[(a & 0x7ff) as usize] = data;
+                    }
+                    Mirroring::HORIZONTAL => {
+                        if a >= 0x800 {
+                            ciram[(0x400 + (a & 0x3ff)) as usize] = data;
+                        } else {
+                            ciram[(a & 0x3ff) as usize] = data;
+                        }
+                    }
+                    Mirroring::FOURSCREEN => { panic!("Four Screen Mirroring not supported by this mapper"); }
+                    Mirroring::SINGLE => { panic!("Single Screen Mirroring not supported by this mapper"); }
+                }
+            }
+
+            _ => { panic!("NROM: INVALID WRITE ON PPU-BUS @ {:#06x} = {:#04x}", address, data); }
+        }
     }
 }
 
@@ -78,12 +153,10 @@ impl NesCartridge {
             return Err(io::Error::new(ErrorKind::Other, "Found no iNES header"));
         }
 
-        let f_flags6 = Flags6 { bits: buffer[7] };
-        let f_prg = buffer[5] as u32 * 16384;
-        let f_chr = buffer[6] as u32 * 8192;
-        let mapper_num = (buffer[8] & 0xf0) | (buffer[7] >> 4);
-        let mut prg = Vec::<u8>::new();
-        let chr = Vec::<u8>::new();
+        let f_flags6 = Flags6 { bits: buffer[6] };
+        let f_prg = buffer[4] as u32 * 16384;
+        let f_chr = buffer[5] as u32 * 8192;
+        let mapper_num = (buffer[7] & 0xf0) | (buffer[6] >> 4);
         let mut trainer = Vec::<u8>::new();
 
         let sz_exp = (16 + (f_flags6.contains(Flags6::TRAINER) as u32 * 512) + f_prg + f_chr) as usize;
@@ -95,18 +168,39 @@ impl NesCartridge {
             offset = offset + 512;
             trainer.copy_from_slice(buffer.get(16..offset).unwrap());
         }
-        let t = offset + f_prg as usize;
 
+        let t1 = offset + f_prg as usize;
+        let t2 = t1 + f_chr as usize;
         let mapper;
-        let pd = buffer.get(offset..t).unwrap();
+
+        // load prg data
+        let mut prg = Vec::<u8>::new();
+        let pd = buffer.get(offset..t1).unwrap();
         prg.extend_from_slice(pd);
         if mapper_num == 0 && f_prg == 16384 {
             prg.extend_from_slice(pd);
         }
+
+        // load chr data
+        let mut chr = Vec::<u8>::new();
+        let pd = buffer.get(t1..t2).unwrap();
+        chr.extend_from_slice(pd);
+
         match mapper_num {
             0 => {
+                let mirroring: Mirroring;
+                if f_flags6.contains(Flags6::FOURSCREEN) {
+                    mirroring = Mirroring::FOURSCREEN;
+                } else {
+                    if f_flags6.contains(Flags6::VERTICAL) {
+                        mirroring = Mirroring::VERTICAL;
+                    } else {
+                        mirroring = Mirroring::HORIZONTAL;
+                    }
+                }
+                println!("Found NROM (PRG:{} CHR:{} MAPPER:{} MIRRORING:{:?})", f_prg, f_chr, mapper_num, mirroring);
                 mapper = Box::new(MapperNROM {
-                    data: Box::new(CatridgeData { prg, chr })
+                    data: Box::new(CatridgeData { mirroring, prg, chr })
                 });
             }
             _ => {

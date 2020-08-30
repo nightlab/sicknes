@@ -33,8 +33,8 @@ fn rom_cpu_nestest() {
     }
 
     // get result from ram
-    let rr1 = machine.bus.read_u8(2);
-    let rr2 = machine.bus.read_u8(3);
+    let rr1 = machine.bus.read_u8(2, false);
+    let rr2 = machine.bus.read_u8(3, false);
 
     // compare results
     let regs = format!("{}", machine.cpu);
