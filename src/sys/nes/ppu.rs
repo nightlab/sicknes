@@ -50,8 +50,18 @@ pub struct PPU {
     pub oamdata: u8,
     pub ppudata: u8,
 
-    pub scanline: i16,
-    pub cycle: u32
+    pub count_h: u32,
+    pub count_v: u16,
+    pub frame: u32,
+
+    pub nt_cur: u16,
+    pub at_cur: u16,
+    pub pt_cur: u16,
+    pub offset: u16,
+
+    pub rb: [[u8;4]; 2],
+    pub rb_idx: usize
+
 }
 
 impl PPU {
@@ -88,13 +98,22 @@ impl PPU {
 
             startup: true,
 
+            nt_cur: 0,
+            at_cur: 0,
+            pt_cur: 0,
+            offset: 0,
+
             v: 0,
             t: 0,
             x: 0,
             w: 0,
 
-            scanline: 261,
-            cycle: 0
+            count_h: 0,
+            count_v: 261,
+            frame: 0,
+
+            rb: [ [ 0, 0, 0, 0 ], [ 0, 0, 0, 0 ] ],
+            rb_idx: 0
         }
     }
 
@@ -158,7 +177,7 @@ impl PPU {
             7 => {
                 //println!("PPU@{:#06X}={:#04X}", self.v, value);
                 if self.rendering && (self.show_bg || self.show_sp) {
-                    panic!("WARNING: Write PPUDATA @ {:#06x} while rendering! [{}.{}]", self.v, self.scanline, self.cycle);
+                    panic!("WARNING: Write PPUDATA @ {:#06x} while rendering! [{}.{}]", self.v, self.count_v, self.count_h);
                 }
                 if self.v >= 0x3f00 {
                     self.palette[(self.v & 0x1f) as usize] = value;
@@ -187,7 +206,7 @@ impl PPU {
             6 => { panic!("Read on PPUADDR"); }
             7 => {
                 if self.rendering && (self.show_bg || self.show_sp) {
-                    panic!("WARNING: Read PPUDATA @ {:#06x} while rendering! [{}.{}]", self.v, self.scanline, self.cycle);
+                    panic!("WARNING: Read PPUDATA @ {:#06x} while rendering! [{}.{}]", self.v, self.count_v, self.count_h);
                 }
                 println!("Read on PPUDATA @ {:#06x}", self.v);
                 let res;
@@ -203,58 +222,122 @@ impl PPU {
         }
     }
 
-    pub fn clock(&mut self) {
-        self.cycle = self.cycle + 1;
-        if self.cycle == 341 {
-            self.cycle = 0;
-            self.scanline = self.scanline + 1;
-            if self.scanline == 262 {
-                self.scanline = 0;
-            }
-        }
-    }
-
-    pub fn update(&mut self, _mapper: &Box<dyn MapperAccess>, ec: u32) {
+    pub fn update(&mut self, mapper: &mut Box<dyn MapperAccess>, cc: u32) {
         if self.startup {
-            if self.cycle > 29658*3 {
+            if self.count_h > 29658*3 {
                 self.startup = false;
-                self.cycle = 0;
-                self.scanline = 0;
+                self.count_h = 0;
+                self.count_v = 0;
             } else {
-                self.cycle = self.cycle + ec;
+                self.count_h = self.count_h + cc;
             }
             return;
         }
-        for _ in 0..ec {
-            match self.scanline {
-                // render
-                0..=239 => {
-                }
+        for _ in 0..cc {
+            if self.count_h == 0 {
+                self.count_h = self.count_h + 1; // idle tick
+            } else {
+                match self.count_v {
+                    // render
+                    0..=239 => {
+                        match self.count_h {
+                            1 => {
+                                self.offset = self.count_v >> 3;
+                                self.nt_cur = self.nt_address + (self.offset * 32);
+                                self.at_cur = self.nt_cur + 0x3c0 + (self.offset * 32);
+                            }
+                            2..=256 => {
+                                if self.count_h & 1 == 0 {
+                                    let step = (self.count_h - 2) >> 1;
+                                    match step & 0x3 {
+                                        0 => {
+                                            self.rb[0][0] = mapper.read_chr_u8(&self.ciram, self.nt_cur);
 
-                // idle
-                240..=260 => {
-                    if self.scanline == 241 && self.cycle == 1 {
-                        self.rendering = false;
-                        self.ppustatus = self.ppustatus | 0x80; // set vblank
-                        if self.nmi {
-                            self.nmi_pending = true;
+                                            /*if self.count_v % 8 == 0 {
+                                                //print!("{:04x} ", self.nt_cur);
+                                                if self.rb[0][0] != 0x24 {
+                                                    print!("{:02x} ", self.rb[0][0]);
+                                                } else {
+                                                    print!("   ");
+                                                }
+                                            }*/
+
+                                            self.nt_cur = self.nt_cur + 1;
+                                            self.pt_cur = self.bg_pt_adr + ((self.rb[0][0] as u16) << 4);
+                                        }
+                                        1 => { self.rb[0][1] = mapper.read_chr_u8(&self.ciram, self.at_cur); self.at_cur = self.at_cur + 1; }
+                                        2 => { self.rb[0][2] = mapper.read_chr_u8(&self.ciram, self.pt_cur); }
+                                        3 => { self.rb[0][3] = mapper.read_chr_u8(&self.ciram, self.pt_cur + 8); }
+                                        _ => { }
+                                    }
+                                }
+                            }
+                            340 => {
+                                /*if self.count_v % 8 == 0 {
+                                    println!("|");
+                                }*/
+                            }
+                            _ => {}
                         }
                     }
-                }
 
-                // prefetch
-                261 => {
-                    if self.cycle == 1 {
-                        self.ppustatus = self.ppustatus & 0x7f; // reset vblank
+                    // idle
+                    240..=260 => {
+                        if self.count_v == 241 && self.count_h == 1 {
+                            self.rendering = false;
+                            self.ppustatus = self.ppustatus | 0x80; // set vblank
+                            //println!("---------------------------------------------------------");
+                            self.frame = self.frame + 1;
+                            /*if self.frame > 120 {
+                                panic!("2 seconds");
+                            }*/
+                            if self.nmi {
+                                self.nmi_pending = true;
+                            }
+                        }
                     }
-                    if self.cycle == 340 {
-                        self.rendering = true;
-                    }                    
+
+                    // prefetch
+                    261 => {
+                        match self.count_h {
+                            1 => {
+                               self.ppustatus = self.ppustatus & 0x7f; // reset vblank
+                            }
+                            320 => {
+                                self.nt_cur = self.nt_address;
+                                self.at_cur = self.nt_cur + 0x3c0;
+                                self.offset = 0;
+                            }
+                            
+                            /*322 => { self.rb[1][0] = mapper.read_chr_u8(&self.ciram, self.nt_cur); self.nt_cur = self.nt_cur + 1; self.pt_cur = self.bg_pt_adr + ((self.rb[0][0] as u16) << 4); }
+                            324 => { self.rb[1][1] = mapper.read_chr_u8(&self.ciram, self.at_cur); self.at_cur = self.at_cur + 1; }
+                            326 => { self.rb[1][2] = mapper.read_chr_u8(&self.ciram, self.pt_cur); }
+                            328 => { self.rb[1][3] = mapper.read_chr_u8(&self.ciram, self.pt_cur + 8); }
+
+                            330 => { self.rb[0][0] = mapper.read_chr_u8(&self.ciram, self.nt_cur); self.nt_cur = self.nt_cur + 1; self.pt_cur = self.bg_pt_adr + ((self.rb[0][0] as u16) << 4); }
+                            332 => { self.rb[0][1] = mapper.read_chr_u8(&self.ciram, self.at_cur); self.at_cur = self.at_cur + 1; }
+                            334 => { self.rb[0][2] = mapper.read_chr_u8(&self.ciram, self.pt_cur); }
+                            336 => { self.rb[0][3] = mapper.read_chr_u8(&self.ciram, self.pt_cur + 8); }
+*/
+                            340 => {
+                                self.rendering = true;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    _ => { panic!("Invalid scanline {}", self.count_v); }
                 }
 
-                _ => { panic!("Invalid scanline {}", self.scanline); }
+                self.count_h = self.count_h + 1;
+                if self.count_h == 341 {
+                    self.count_h = 0;
+                    self.count_v = self.count_v + 1;
+                    if self.count_v == 262 {
+                        self.count_v = 0;
+                    }
+                }
             }
-            self.clock();
         }
     }
 
@@ -262,5 +345,3 @@ impl PPU {
 
     }
 }
-
-

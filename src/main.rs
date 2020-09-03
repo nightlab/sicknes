@@ -5,6 +5,9 @@ extern crate piston_window;
 #[macro_use]
 extern crate bitflags;
 
+#[macro_use]
+extern crate log;
+
 use piston_window::*;
 
 mod cpu;
@@ -14,9 +17,17 @@ mod tests;
 use clap::{App, crate_version, crate_authors, crate_description};
 use std::{thread};
 use std::time::{Instant, Duration};
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::panic;
+use std::io;
 use std::process;
+
+use ws::listen;
+
+use std::net::TcpListener;
+use std::net::TcpStream;
+
+use tungstenite::server::accept;
 
 bitflags! {
     struct NesPadState: u32 {
@@ -32,8 +43,14 @@ bitflags! {
 }
 
 #[derive(Debug, Clone)]
-enum CoreMsg {
+enum DebugMsg {
     WantExit
+}
+
+#[derive(Debug, Clone)]
+enum CoreMsg {
+    WantExit,
+    Echo(String)
 }
 
 #[derive(Debug, Clone)]
@@ -43,7 +60,118 @@ enum MainMsg {
     UpdateInput(u32, u32, u32, u32)
 }
 
+fn t_core(core_tx: Sender<CoreMsg>, main_rx: Receiver<MainMsg>) {
+    let mut machine : Box<dyn sys::Machine> = Box::new(sys::NES::new());
+    println!("Creating machine \"{}\"...", machine.get_name());
+    let mut now = Instant::now();
+    let mut cycles: u32 = 0;
+    loop {
+        if machine.is_running() {
+            machine.update();
+        } else {
+            thread::sleep(Duration::from_millis(10));
+        }
+        if now.elapsed().as_millis() >= 1000 {
+            let x = machine.get_cycles();
+            let d = x - cycles;
+            println!("{} cycles/sec ({} fps)", d, d / 29780);
+            cycles = x;
+            if let Ok(msg) = main_rx.try_recv() {
+                match msg {
+                    MainMsg::InsertCatridge(filename) => {
+                        if machine.insert_catridge(&filename) {
+                            machine.reset();
+                            machine.start();
+                        } else {
+                            core_tx.send(CoreMsg::WantExit).unwrap();
+                            break;
+                        }
+                    }
+                    MainMsg::UpdateInput(c1, c2, c3, c4) => {
+                        println!("Controller State Change: {} {} {} {}", c1, c2, c3, c4);
+                    }
+                    MainMsg::WantExit => {
+                        break;
+                    }
+                }
+            }                
+            now = Instant::now();
+        }
+    }
+}
+
+fn handle_connection(stream: TcpStream) {
+    println!("Yay!");
+    match accept(stream) {
+        Ok(mut websocket) => {
+            println!("Accepted!");
+            match websocket.read_message() {
+                Ok(m) => {
+                    println!("DEBUG Message: {}", m);
+                }
+                Err(_) => {
+                    println!("Message Error");
+                }
+            }
+        }
+        Err(e) => {
+            println!("Error! Terminating... {}", e);
+        }
+
+    }                    
+}
+
+fn t_debug(core_tx: Sender<CoreMsg>, debug_rx: Receiver<DebugMsg>) {
+    let server = TcpListener::bind("127.0.0.1:10222").unwrap();
+    server.set_nonblocking(true).expect("Cannot set non-blocking");
+    'outer: loop {
+        if let Ok(msg) = debug_rx.try_recv() {
+            match msg {
+                DebugMsg::WantExit => {
+                    break 'outer;
+                }
+            }
+        }
+
+        /*
+        for result in server.incoming() {
+            match result {
+                Ok(stream) => {
+                    println!("DEBUG: Incoming connection");
+                    thread::spawn(|| handle_connection(stream));
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(1));
+                    continue 'outer;
+                }
+                Err(e) => panic!("IO error: {}", e),
+            }
+        } */       
+    }
+    /*for stream in server.incoming() {
+        let mut websocket = accept(stream.unwrap()).unwrap();
+        loop {
+            let msg = websocket.read_message().unwrap();
+
+            // We do not want to send back ping/pong messages.
+            if msg.is_binary() || msg.is_text() {
+                websocket.write_message(msg).unwrap();
+                core_tx.send(CoreMsg::Echo("Juck".to_string())).unwrap();
+            }
+        }
+        if let Ok(msg) = debug_rx.try_recv() {
+            match msg {
+                DebugMsg::WantExit => {
+                    break;
+                }
+            }
+        }
+    }*/
+}
+
 fn main() {
+    env_logger::init();
+
     let app_string = format!("sicknes {}", crate_version!());
     let args = App::new("sicknes")
         .version(crate_version!())
@@ -60,45 +188,10 @@ fn main() {
 
     let (core_tx, core_rx) = channel::<CoreMsg>();
     let (main_tx, main_rx) = channel::<MainMsg>();
-    let core_thread = thread::spawn(move|| {
-        let mut machine : Box<dyn sys::Machine> = Box::new(sys::NES::new());
-        println!("Creating machine \"{}\"...", machine.get_name());
-        let mut now = Instant::now();
-        let mut cycles: u32 = 0;
-        loop {
-            if machine.is_running() {
-                machine.update();
-            } else {
-                thread::sleep(Duration::from_millis(10));
-            }
-            if now.elapsed().as_millis() >= 1000 {
-                let x = machine.get_cycles();
-                let d = x - cycles;
-                println!("{} cycles/sec ({} fps)", d, d / 29780);
-                cycles = x;
-                if let Ok(msg) = main_rx.try_recv() {
-                    match msg {
-                        MainMsg::InsertCatridge(filename) => {
-                            if machine.insert_catridge(&filename) {
-                                machine.reset();
-                                machine.start();
-                            } else {
-                                core_tx.send(CoreMsg::WantExit).unwrap();
-                                break;
-                            }
-                        }
-                        MainMsg::UpdateInput(c1, c2, c3, c4) => {
-                            println!("Controller State Change: {} {} {} {}", c1, c2, c3, c4);
-                        }
-                        MainMsg::WantExit => {
-                            break;
-                        }
-                    }
-                }                
-                now = Instant::now();
-            }
-        }
-    });    
+    let (debug_tx, debug_rx) = channel::<DebugMsg>();
+    let main_tx2 = core_tx.clone();
+    let core_thread = thread::spawn(move|| t_core(core_tx, main_rx));
+    let debug_thread = thread::spawn(move|| t_debug(main_tx2, debug_rx));
 
     let rom = args.value_of("rom").unwrap();
     main_tx.send(MainMsg::InsertCatridge(rom.to_string())).unwrap();
@@ -159,12 +252,19 @@ fn main() {
             }
         } else {
             main_tx.send(MainMsg::WantExit).unwrap();
+            debug_tx.send(DebugMsg::WantExit).unwrap();
             core_thread.join().unwrap();
+            debug_thread.join().unwrap();
             break;
         }
         if let Ok(msg) = core_rx.try_recv() {
             match msg {
-                CoreMsg::WantExit => { core_thread.join().unwrap(); break; }
+                CoreMsg::WantExit => {
+                    core_thread.join().unwrap();
+                    debug_thread.join().unwrap();
+                    break;
+                }
+                CoreMsg::Echo(s) => { println!("Nachricht: {}", s); }
             }
         }
     }
