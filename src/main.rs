@@ -17,9 +17,11 @@ use std::time::{Instant, Duration};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::{process, panic};
 
-use image::{GenericImage, GenericImageView, ImageBuffer, RgbImage};
-use conrod_core::{color, widget, Colorable, Positionable, Scalar, Labelable, Sizeable, Widget};
+use conrod_core::{color, widget, Colorable, Positionable, Labelable, Sizeable, Widget};
 use conrod_core::widget::{Canvas,Tabs,Button};
+
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use glium::Surface;
 
@@ -144,7 +146,7 @@ fn main() {
     let pad2 = NesPadState::empty();
 
     const WIDTH: u32 = 1080;
-    const HEIGHT: u32 = 500;
+    const HEIGHT: u32 = 600;
 
     let mut events_loop = glium::glutin::EventsLoop::new();
     let window = glium::glutin::WindowBuilder::new()
@@ -171,75 +173,109 @@ fn main() {
 
     let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
 
-    //let framebuffer: RgbImage = ImageBuffer::new(512, 512);
-    //let framebuffer = Image::new().rect(square(0.0, 0.0, 200.0));
 
-    let data: Vec<u32> = vec![0xFFEEAAFF;512*512];
-    
-    //let image = glium::texture::RawImage2d::from_raw_rgba(data, (512, 512));
-    //let texture = glium::texture::Texture2d::new(&display, image).unwrap();
+/*    let (width, height, depth, array_size, samples) = extract_dimensions(ty);
+    let (is_client_compressed, data_bufsize) = match data {
+        Some((client_format, _)) => {
+            (client_format.is_compressed(),
+             client_format.get_buffer_size(width, height, depth, array_size))    */
 
-    let framebuffer = glium::Texture2d::empty_with_format(&display.0,
+    /*let framebuffer = glium::Texture2d::with_format(&display.0, raw,
         glium::texture::UncompressedFloatFormat::U8U8U8U8,
-        glium::texture::MipmapsOption::NoMipmap,
-        512, 512).unwrap();
-        framebuffer.as_surface().clear_color(0.0, 1.0, 0.0, 1.0);
+        glium::texture::MipmapsOption::NoMipmap
+    ).unwrap();*/
 
+    let data: Rc<RefCell<Vec<u8>>> = Rc::new(RefCell::new(vec![0xff;256*256*4]));
+
+    let raw = glium::texture::RawImage2d::from_raw_rgba(data.borrow().to_vec(), (256, 256));
+    let texture = glium::texture::Texture2d::new(&display.0, raw).unwrap();
+
+    //if data.len() * mem::size_of::<P>() != data_bufsize
+    
+    //let f = framebuffer.as_surface();
+    //.clear_color(0.0, 1.0, 0.0, 1.0);
 
     let mut image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
+    let fbid = image_map.insert(texture);
 
-    let mut fbmap = conrod_core::image::Map::<glium::texture::Texture2d>::new();
-    let fbid = fbmap.insert(framebuffer);
+    let mut fg: u8 = 0;
+
+    let mut fps: u32 = 0;
 
     let mut last_update = std::time::Instant::now();
-    let mut ui_needs_update = true;
+    let mut last_fps_update = std::time::Instant::now();
     'main: loop {
-        let sixteen_ms = std::time::Duration::from_millis(16);
-        let duration_since_last_update = std::time::Instant::now().duration_since(last_update);
-        if duration_since_last_update < sixteen_ms {
-            std::thread::sleep(sixteen_ms - duration_since_last_update);
-        }
+        fg = rand::random::<u8>();
 
         let mut events = Vec::new();
         events_loop.poll_events(|event| events.push(event));
 
-        if events.is_empty() && !ui_needs_update {
+        /*if events.is_empty() && !ui_needs_update {
             events_loop.run_forever(|event| {
                 events.push(event);
                 glium::glutin::ControlFlow::Break
             });
         }
+        */
 
-        ui_needs_update = false;
-        last_update = std::time::Instant::now();
-
-        for event in events {
-            if let Some(event) = convert_event(event.clone(), &display) {
-                ui.handle_event(event);
-            }
-            match event {
-                glium::glutin::Event::WindowEvent { event, .. } => match event {
-                    glium::glutin::WindowEvent::CloseRequested | glium::glutin::WindowEvent::KeyboardInput {
-                        input:
-                            glium::glutin::KeyboardInput {
-                                virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape),
-                                ..
-                            },
-                        ..
-                    } => break 'main,
+        if !events.is_empty() {
+            for event in events {
+                if let Some(event) = convert_event(event.clone(), &display) {
+                    ui.handle_event(event);
+                }
+                match event {
+                    glium::glutin::Event::WindowEvent { event, .. } => match event {
+                        glium::glutin::WindowEvent::CloseRequested | glium::glutin::WindowEvent::KeyboardInput {
+                            input:
+                                glium::glutin::KeyboardInput {
+                                    virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        } => break 'main,
+                        _ => (),
+                    },
                     _ => (),
-                },
-                _ => (),
+                }
             }
         }
 
+        let sixteen_ms = std::time::Duration::from_millis(16);
+        let duration_since_last_update = std::time::Instant::now().duration_since(last_update);
+        if duration_since_last_update < sixteen_ms {
+            std::thread::sleep(sixteen_ms - duration_since_last_update);
+            last_update = std::time::Instant::now();
+        }
+
+        {
+            let mut r = data.borrow_mut();
+            for i in 0..262144 {
+                r[i] = fg;
+            }
+        }
+
+        let raw = glium::texture::RawImage2d::from_raw_rgba(data.borrow().to_vec(), (256, 256));
+        let texture = glium::texture::Texture2d::new(&display.0, raw).unwrap();
+        image_map.replace(fbid, texture);
+
         set_ui(ui.set_widgets(), &ids, &fonts, fbid);
+
+        ui.needs_redraw();
+
         if let Some(primitives) = ui.draw_if_changed() {
             renderer.fill(&display.0, primitives, &image_map);
             let mut target = display.0.draw();
             target.clear_color(0.0, 0.0, 0.0, 1.0);
             renderer.draw(&display.0, &mut target, &image_map).unwrap();
             target.finish().unwrap();
+        }
+        fps = fps + 1;
+
+        let dlfps = std::time::Instant::now().duration_since(last_fps_update);
+        if dlfps.as_millis() >= 1000 {
+            println!("{} FPS", fps);
+            last_fps_update = std::time::Instant::now();
+            fps = 0;
         }
     }
 
@@ -338,7 +374,7 @@ fn set_ui(ref mut ui: conrod_core::UiCell, ids: &Ids, fonts: &Fonts, i: conrod_c
     Canvas::new().flow_down(&[
         (ids.header, Canvas::new().length(45.0).color(color::BLUE)),
         (ids.body, Canvas::new().flow_right(&[
-            (ids.left_col, widget::Canvas::new().color(color::BLACK)),
+            (ids.left_col, widget::Canvas::new().length(512.0).color(color::BLACK)),
             (ids.right_col, widget::Canvas::new().color(color::GREEN))
         ])),
         (ids.footer, Canvas::new().length(30.0).color(color::RED))
@@ -355,7 +391,10 @@ fn set_ui(ref mut ui: conrod_core::UiCell, ids: &Ids, fonts: &Fonts, i: conrod_c
     text(widget::Text::new("Ein eiskaltes Pils")).middle_of(ids.tab_bar).set(ids.bar_label, ui);
     text(widget::Text::new("Ein dicker, saftiger Schinken")).middle_of(ids.tab_baz).set(ids.baz_label, ui);
 
-    widget::Image::new(i).w_h(100.0,100.0).middle().set(ids.img1, ui);
+    widget::Image::new(i)
+        .w_h(512.0, 512.0)
+        .middle_of(ids.left_col)
+        .set(ids.img1, ui);
 
     Button::new()
         .label_font_id(fonts.bold)
