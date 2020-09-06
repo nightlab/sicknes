@@ -5,11 +5,14 @@ authors = ["Stephan König <tb@octoplex.org>"]
 edition = "2018"
 
 [dependencies]
-piston = "0.52.0"
-piston_window = "0.111.0"
 clap = "3.0.0-beta.1"
 bitflags = "1.2.1"
-tungstenite = "0.11.1"
-ws = "0.9.1"
 log = "0.4.0"
 env_logger = "0.7.1"
+conrod_core = "0.70.0"
+conrod_glium = "0.70.0"
+conrod_winit = "0.70.0"
+glium = "0.24.0"
+find_folder = "0.3.0"
+winit = "0.19"
+image = "0.23.9"

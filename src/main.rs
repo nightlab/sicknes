@@ -1,14 +1,11 @@
 #![allow(dead_code)]
 
-extern crate piston_window;
-
-#[macro_use]
-extern crate bitflags;
-
-#[macro_use]
-extern crate log;
-
-use piston_window::*;
+#[macro_use] extern crate bitflags;
+#[macro_use] extern crate conrod_core;
+extern crate conrod_glium;
+extern crate conrod_winit;
+extern crate find_folder;
+extern crate winit;
 
 mod cpu;
 mod sys;
@@ -18,16 +15,27 @@ use clap::{App, crate_version, crate_authors, crate_description};
 use std::{thread};
 use std::time::{Instant, Duration};
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::panic;
-use std::io;
-use std::process;
+use std::{process, panic};
 
-use ws::listen;
+use image::{GenericImage, GenericImageView, ImageBuffer, RgbImage};
+use conrod_core::{color, widget, Colorable, Positionable, Scalar, Labelable, Sizeable, Widget};
+use conrod_core::widget::{Canvas,Tabs,Button};
 
-use std::net::TcpListener;
-use std::net::TcpStream;
+use glium::Surface;
 
-use tungstenite::server::accept;
+use std;
+use glium;
+
+pub struct GliumDisplayWinitWrapper(pub glium::Display);
+
+impl conrod_winit::WinitWindow for GliumDisplayWinitWrapper {
+    fn get_inner_size(&self) -> Option<(u32, u32)> {
+        self.0.gl_window().get_inner_size().map(Into::into)
+    }
+    fn hidpi_factor(&self) -> f32 {
+        self.0.gl_window().get_hidpi_factor() as _
+    }
+}
 
 bitflags! {
     struct NesPadState: u32 {
@@ -58,6 +66,12 @@ enum MainMsg {
     WantExit,
     InsertCatridge(String),
     UpdateInput(u32, u32, u32, u32)
+}
+
+struct Fonts {
+    regular: conrod_core::text::font::Id,
+    italic: conrod_core::text::font::Id,
+    bold: conrod_core::text::font::Id,
 }
 
 fn t_core(core_tx: Sender<CoreMsg>, main_rx: Receiver<MainMsg>) {
@@ -100,77 +114,10 @@ fn t_core(core_tx: Sender<CoreMsg>, main_rx: Receiver<MainMsg>) {
     }
 }
 
-fn handle_connection(stream: TcpStream) {
-    println!("Yay!");
-    match accept(stream) {
-        Ok(mut websocket) => {
-            println!("Accepted!");
-            match websocket.read_message() {
-                Ok(m) => {
-                    println!("DEBUG Message: {}", m);
-                }
-                Err(_) => {
-                    println!("Message Error");
-                }
-            }
-        }
-        Err(e) => {
-            println!("Error! Terminating... {}", e);
-        }
-
-    }                    
-}
-
-fn t_debug(core_tx: Sender<CoreMsg>, debug_rx: Receiver<DebugMsg>) {
-    let server = TcpListener::bind("127.0.0.1:10222").unwrap();
-    server.set_nonblocking(true).expect("Cannot set non-blocking");
-    'outer: loop {
-        if let Ok(msg) = debug_rx.try_recv() {
-            match msg {
-                DebugMsg::WantExit => {
-                    break 'outer;
-                }
-            }
-        }
-
-        /*
-        for result in server.incoming() {
-            match result {
-                Ok(stream) => {
-                    println!("DEBUG: Incoming connection");
-                    thread::spawn(|| handle_connection(stream));
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(1));
-                    continue 'outer;
-                }
-                Err(e) => panic!("IO error: {}", e),
-            }
-        } */       
-    }
-    /*for stream in server.incoming() {
-        let mut websocket = accept(stream.unwrap()).unwrap();
-        loop {
-            let msg = websocket.read_message().unwrap();
-
-            // We do not want to send back ping/pong messages.
-            if msg.is_binary() || msg.is_text() {
-                websocket.write_message(msg).unwrap();
-                core_tx.send(CoreMsg::Echo("Juck".to_string())).unwrap();
-            }
-        }
-        if let Ok(msg) = debug_rx.try_recv() {
-            match msg {
-                DebugMsg::WantExit => {
-                    break;
-                }
-            }
-        }
-    }*/
-}
-
 fn main() {
     env_logger::init();
+
+    conrod_winit::conversion_fns!();
 
     let app_string = format!("sicknes {}", crate_version!());
     let args = App::new("sicknes")
@@ -188,22 +135,115 @@ fn main() {
 
     let (core_tx, core_rx) = channel::<CoreMsg>();
     let (main_tx, main_rx) = channel::<MainMsg>();
-    let (debug_tx, debug_rx) = channel::<DebugMsg>();
-    let main_tx2 = core_tx.clone();
     let core_thread = thread::spawn(move|| t_core(core_tx, main_rx));
-    let debug_thread = thread::spawn(move|| t_debug(main_tx2, debug_rx));
 
     let rom = args.value_of("rom").unwrap();
     main_tx.send(MainMsg::InsertCatridge(rom.to_string())).unwrap();
 
-    let mut window: PistonWindow =
-        WindowSettings::new(app_string, [640, 480])
-        .exit_on_esc(true).build().unwrap();
-
     let mut pad1 = NesPadState::empty();
     let pad2 = NesPadState::empty();
 
-    loop {
+    const WIDTH: u32 = 1080;
+    const HEIGHT: u32 = 500;
+
+    let mut events_loop = glium::glutin::EventsLoop::new();
+    let window = glium::glutin::WindowBuilder::new()
+                .with_title(app_string)
+                .with_dimensions((WIDTH, HEIGHT).into());
+    let context = glium::glutin::ContextBuilder::new()
+                .with_vsync(true)
+                .with_multisampling(4);
+    let display = glium::Display::new(window, context, &events_loop).unwrap();
+    let display = GliumDisplayWinitWrapper(display);
+
+    let mut ui = conrod_core::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
+
+    let ids = Ids::new(ui.widget_id_generator());
+
+    let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
+    let noto_sans = assets.join("fonts/NotoSans");
+    let fonts = Fonts {
+        regular: ui.fonts.insert_from_file(noto_sans.join("NotoSans-Regular.ttf")).unwrap(),
+        italic: ui.fonts.insert_from_file(noto_sans.join("NotoSans-Italic.ttf")).unwrap(),
+        bold: ui.fonts.insert_from_file(noto_sans.join("NotoSans-Bold.ttf")).unwrap(),
+    };
+    ui.theme.font_id = Some(fonts.regular);
+
+    let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
+
+    //let framebuffer: RgbImage = ImageBuffer::new(512, 512);
+    //let framebuffer = Image::new().rect(square(0.0, 0.0, 200.0));
+
+    let data: Vec<u32> = vec![0xFFEEAAFF;512*512];
+    
+    //let image = glium::texture::RawImage2d::from_raw_rgba(data, (512, 512));
+    //let texture = glium::texture::Texture2d::new(&display, image).unwrap();
+
+    let framebuffer = glium::Texture2d::empty_with_format(&display.0,
+        glium::texture::UncompressedFloatFormat::U8U8U8U8,
+        glium::texture::MipmapsOption::NoMipmap,
+        512, 512).unwrap();
+        framebuffer.as_surface().clear_color(0.0, 1.0, 0.0, 1.0);
+
+
+    let mut image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
+
+    let mut fbmap = conrod_core::image::Map::<glium::texture::Texture2d>::new();
+    let fbid = fbmap.insert(framebuffer);
+
+    let mut last_update = std::time::Instant::now();
+    let mut ui_needs_update = true;
+    'main: loop {
+        let sixteen_ms = std::time::Duration::from_millis(16);
+        let duration_since_last_update = std::time::Instant::now().duration_since(last_update);
+        if duration_since_last_update < sixteen_ms {
+            std::thread::sleep(sixteen_ms - duration_since_last_update);
+        }
+
+        let mut events = Vec::new();
+        events_loop.poll_events(|event| events.push(event));
+
+        if events.is_empty() && !ui_needs_update {
+            events_loop.run_forever(|event| {
+                events.push(event);
+                glium::glutin::ControlFlow::Break
+            });
+        }
+
+        ui_needs_update = false;
+        last_update = std::time::Instant::now();
+
+        for event in events {
+            if let Some(event) = convert_event(event.clone(), &display) {
+                ui.handle_event(event);
+            }
+            match event {
+                glium::glutin::Event::WindowEvent { event, .. } => match event {
+                    glium::glutin::WindowEvent::CloseRequested | glium::glutin::WindowEvent::KeyboardInput {
+                        input:
+                            glium::glutin::KeyboardInput {
+                                virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    } => break 'main,
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+
+        set_ui(ui.set_widgets(), &ids, &fonts, fbid);
+        if let Some(primitives) = ui.draw_if_changed() {
+            renderer.fill(&display.0, primitives, &image_map);
+            let mut target = display.0.draw();
+            target.clear_color(0.0, 0.0, 0.0, 1.0);
+            renderer.draw(&display.0, &mut target, &image_map).unwrap();
+            target.finish().unwrap();
+        }
+    }
+
+    /*loop {
         if let Some(event) = window.next() {
             // press keyboard button
             if let Some(Button::Keyboard(key)) = event.press_args() {
@@ -252,21 +292,75 @@ fn main() {
             }
         } else {
             main_tx.send(MainMsg::WantExit).unwrap();
-            debug_tx.send(DebugMsg::WantExit).unwrap();
             core_thread.join().unwrap();
-            debug_thread.join().unwrap();
             break;
         }
         if let Ok(msg) = core_rx.try_recv() {
             match msg {
                 CoreMsg::WantExit => {
                     core_thread.join().unwrap();
-                    debug_thread.join().unwrap();
                     break;
                 }
                 CoreMsg::Echo(s) => { println!("Nachricht: {}", s); }
             }
         }
-    }
+    }*/
     println!("Have a nice day!");
+}
+
+widget_ids! {
+    struct Ids {
+        master,
+        left_col,
+        right_col,
+        left_text,
+        middle_text,
+        right_text,
+        button_1,
+        button_2,
+        footer,
+        header,
+        body,
+        tab_foo,
+        tab_bar,
+        tab_baz,
+        tabs,
+        foo_label,
+        bar_label,
+        baz_label,
+        framebuffer,
+        img1
+    }
+}
+
+fn set_ui(ref mut ui: conrod_core::UiCell, ids: &Ids, fonts: &Fonts, i: conrod_core::image::Id) {
+
+    Canvas::new().flow_down(&[
+        (ids.header, Canvas::new().length(45.0).color(color::BLUE)),
+        (ids.body, Canvas::new().flow_right(&[
+            (ids.left_col, widget::Canvas::new().color(color::BLACK)),
+            (ids.right_col, widget::Canvas::new().color(color::GREEN))
+        ])),
+        (ids.footer, Canvas::new().length(30.0).color(color::RED))
+    ]).set(ids.master, ui);
+
+    Tabs::new(&[(ids.tab_foo, "FLEISCH"), (ids.tab_bar, "BIER"), (ids.tab_baz, "WURST")])
+        .wh_of(ids.right_col)
+        .color(color::BLUE)
+        .label_color(color::WHITE)
+        .middle_of(ids.right_col)
+        .set(ids.tabs, ui);
+    fn text(text: widget::Text) -> widget::Text { text.color(color::WHITE).font_size(36) }
+    text(widget::Text::new("Ein knuspriges Steak")).middle_of(ids.tab_foo).set(ids.foo_label, ui);
+    text(widget::Text::new("Ein eiskaltes Pils")).middle_of(ids.tab_bar).set(ids.bar_label, ui);
+    text(widget::Text::new("Ein dicker, saftiger Schinken")).middle_of(ids.tab_baz).set(ids.baz_label, ui);
+
+    widget::Image::new(i).w_h(100.0,100.0).middle().set(ids.img1, ui);
+
+    Button::new()
+        .label_font_id(fonts.bold)
+        .label("EXIT")
+        .w_h(120.0, 35.0).
+        middle_of(ids.header)
+        .set(ids.button_1, ui);
 }
