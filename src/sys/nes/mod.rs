@@ -1,5 +1,5 @@
-use crate::sys;
 use crate::cpu::Mos6502;
+use crate::sys;
 
 pub mod cartridge;
 pub use cartridge::*;
@@ -19,7 +19,7 @@ pub struct Bus {
 
     cart: Option<NesCartridge>,
     mapper: Box<dyn MapperAccess>,
-    pub bus_error: bool
+    pub bus_error: bool,
 }
 
 pub struct NES {
@@ -29,8 +29,11 @@ pub struct NES {
     pub bus: Bus,
 
     ppu_rem: u32,
-    
+
+    ccs: u32,
+
     is_running: bool,
+    startup: bool,
 }
 
 impl NES {
@@ -40,7 +43,9 @@ impl NES {
             cpu: Mos6502::new(true),
             is_running: false,
             name: "Nintendo Entertainment System (Famicom)",
-            ppu_rem: 0
+            ppu_rem: 0,
+            ccs: 0,
+            startup: false,
         }
     }
 }
@@ -53,7 +58,7 @@ impl Bus {
             ppu: PPU::new(),
             mapper: Box::new(MapperDummy {}),
             cart: None,
-            bus_error: false
+            bus_error: false,
         }
     }
 }
@@ -61,9 +66,7 @@ impl Bus {
 impl sys::MemoryAccessA16D8 for Bus {
     fn read_u8(&mut self, address: u16, dummy: bool) -> u8 {
         match address {
-            0x8000..=0xffff => {
-                self.mapper.read_prg_u8(address)
-            }
+            0x8000..=0xffff => self.mapper.read_prg_u8(address),
             0x2000..=0x3fff => {
                 if dummy {
                     return 0xff;
@@ -95,7 +98,8 @@ impl sys::MemoryAccessA16D8 for Bus {
             }
             0x2000..=0x3fff => {
                 //println!("WRITE PPU @ {:#06x} = {:#04x}", address, data);
-                self.ppu.reg_write(&mut self.mapper, (address & 0x7) as u8, data);
+                self.ppu
+                    .reg_write(&mut self.mapper, (address & 0x7) as u8, data);
             }
             0x4000..=0x401f => {
                 let ra = (address & 0xf) as usize;
@@ -131,18 +135,29 @@ impl sys::Machine for NES {
     fn is_running(&self) -> bool {
         self.is_running
     }
-    
+
     fn update(&mut self) {
         let cc;
         if self.bus.ppu.nmi_pending {
             cc = self.cpu.interrupt(true, &mut self.bus);
             self.bus.ppu.nmi_pending = false;
         } else {
-            cc = self.cpu.step(&mut self.bus);
+            cc = self.cpu.step(&mut self.bus) as u32;
         }
-        self.bus.ppu.update(&mut self.bus.mapper, cc * 3);
+        self.ccs = self.ccs + cc * 3;
+        if self.startup {
+            if self.ccs >= 88974 {
+                self.startup = false;
+                self.ccs = 0;
+            }
+        } else {
+            if self.ccs >= 341 {
+                self.ccs = self.ccs - 341;
+                self.bus.ppu.update(&mut self.bus.mapper);
+            }
+        }
     }
-    
+
     fn insert_catridge(&mut self, filename: &str) -> bool {
         println!("Inserting catridge {}...", filename);
         let res = NesCartridge::load(filename);

@@ -1,21 +1,21 @@
-use std::io;
-use std::io::ErrorKind;
-use std::io::prelude::*;
-use std::path::Path;
 use std::fs::File;
+use std::io;
+use std::io::prelude::*;
+use std::io::ErrorKind;
+use std::path::Path;
 
 #[derive(Debug)]
 enum Mirroring {
     VERTICAL,
     HORIZONTAL,
     FOURSCREEN,
-    SINGLE
+    SINGLE,
 }
 
 pub struct CatridgeData {
     mirroring: Mirroring,
     pub prg: Vec<u8>,
-    pub chr: Vec<u8>
+    pub chr: Vec<u8>,
 }
 
 pub trait MapperAccess {
@@ -25,18 +25,21 @@ pub trait MapperAccess {
     fn write_chr_u8(&mut self, vram: &mut [u8], address: u16, data: u8);
 }
 
-pub struct MapperDummy {
-}
+pub struct MapperDummy {}
 
 impl MapperAccess for MapperDummy {
-    fn read_prg_u8(&mut self, _address: u16) -> u8 { return 0; }
-    fn write_prg_u8(&mut self, _address: u16, _data: u8) { }
-    fn read_chr_u8(&mut self, _vram: &[u8], _address: u16) -> u8 { return 0; }
-    fn write_chr_u8(&mut self, _vram: &mut [u8], _address: u16, _data: u8) { }
+    fn read_prg_u8(&mut self, _address: u16) -> u8 {
+        return 0;
+    }
+    fn write_prg_u8(&mut self, _address: u16, _data: u8) {}
+    fn read_chr_u8(&mut self, _vram: &[u8], _address: u16) -> u8 {
+        return 0;
+    }
+    fn write_chr_u8(&mut self, _vram: &mut [u8], _address: u16, _data: u8) {}
 }
 
 pub struct MapperNROM {
-    data: Box<CatridgeData>
+    data: Box<CatridgeData>,
 }
 
 impl MapperAccess for MapperNROM {
@@ -45,7 +48,10 @@ impl MapperAccess for MapperNROM {
     }
 
     fn write_prg_u8(&mut self, address: u16, data: u8) {
-        panic!("NROM: INVALID WRITE ON CPU-BUS @ {:#06x} = {:#04x}", address, data);
+        panic!(
+            "NROM: INVALID WRITE ON CPU-BUS @ {:#06x} = {:#04x}",
+            address, data
+        );
     }
 
     fn read_chr_u8(&mut self, ciram: &[u8], address: u16) -> u8 {
@@ -69,12 +75,18 @@ impl MapperAccess for MapperNROM {
                             return ciram[(a & 0x3ff) as usize];
                         }
                     }
-                    Mirroring::FOURSCREEN => { panic!("Four Screen Mirroring not supported by this mapper"); }
-                    Mirroring::SINGLE => { panic!("Single Screen Mirroring not supported by this mapper"); }
+                    Mirroring::FOURSCREEN => {
+                        panic!("Four Screen Mirroring not supported by this mapper");
+                    }
+                    Mirroring::SINGLE => {
+                        panic!("Single Screen Mirroring not supported by this mapper");
+                    }
                 }
             }
 
-            _ => { panic!("NROM: INVALID READ ON PPU-BUS @ {:#06x}", address); }
+            _ => {
+                panic!("NROM: INVALID READ ON PPU-BUS @ {:#06x}", address);
+            }
         }
     }
 
@@ -82,7 +94,10 @@ impl MapperAccess for MapperNROM {
         match address {
             // maps to chr rom
             0x0000..=0x1FFF => {
-                panic!("NROM: WRITE ROM ON PPU-BUS @ {:#06x} = {:#04x}", address, data);
+                panic!(
+                    "NROM: WRITE ROM ON PPU-BUS @ {:#06x} = {:#04x}",
+                    address, data
+                );
             }
 
             // maps to ppu vram
@@ -99,12 +114,21 @@ impl MapperAccess for MapperNROM {
                             ciram[(a & 0x3ff) as usize] = data;
                         }
                     }
-                    Mirroring::FOURSCREEN => { panic!("Four Screen Mirroring not supported by this mapper"); }
-                    Mirroring::SINGLE => { panic!("Single Screen Mirroring not supported by this mapper"); }
+                    Mirroring::FOURSCREEN => {
+                        panic!("Four Screen Mirroring not supported by this mapper");
+                    }
+                    Mirroring::SINGLE => {
+                        panic!("Single Screen Mirroring not supported by this mapper");
+                    }
                 }
             }
 
-            _ => { panic!("NROM: INVALID WRITE ON PPU-BUS @ {:#06x} = {:#04x}", address, data); }
+            _ => {
+                panic!(
+                    "NROM: INVALID WRITE ON PPU-BUS @ {:#06x} = {:#04x}",
+                    address, data
+                );
+            }
         }
     }
 }
@@ -128,11 +152,11 @@ pub struct NesCartridge {
     pub f_flags7: u8,
     pub f_flags8: u8,
     pub f_flags9: u8,
-    pub f_flags10: u8
+    pub f_flags10: u8,
 }
 
 impl NesCartridge {
-    pub fn load(filename : &str) -> Result<(NesCartridge, Box<dyn MapperAccess>), io::Error> {
+    pub fn load(filename: &str) -> Result<(NesCartridge, Box<dyn MapperAccess>), io::Error> {
         let mut is_zip = false;
         if let Some(ext) = Path::new(filename).extension() {
             let ext = ext.to_str().unwrap().to_lowercase();
@@ -141,7 +165,10 @@ impl NesCartridge {
             }
         }
         if is_zip {
-            return Err(io::Error::new(ErrorKind::Other, "Zip-files are not supported yet"));
+            return Err(io::Error::new(
+                ErrorKind::Other,
+                "Zip-files are not supported yet",
+            ));
         }
         let mut f = File::open(filename)?;
         let mut buffer = Vec::new();
@@ -149,7 +176,7 @@ impl NesCartridge {
         if buffer.len() < 16 {
             return Err(io::Error::new(ErrorKind::Other, "Invalid file"));
         }
-        if buffer.get(0..4).unwrap() != [78,69,83,26] {
+        if buffer.get(0..4).unwrap() != [78, 69, 83, 26] {
             return Err(io::Error::new(ErrorKind::Other, "Found no iNES header"));
         }
 
@@ -159,9 +186,13 @@ impl NesCartridge {
         let mapper_num = (buffer[7] & 0xf0) | (buffer[6] >> 4);
         let mut trainer = Vec::<u8>::new();
 
-        let sz_exp = (16 + (f_flags6.contains(Flags6::TRAINER) as u32 * 512) + f_prg + f_chr) as usize;
+        let sz_exp =
+            (16 + (f_flags6.contains(Flags6::TRAINER) as u32 * 512) + f_prg + f_chr) as usize;
         if buffer.len() < sz_exp {
-            return Err(io::Error::new(ErrorKind::Other, format!("Header damaged (expected filesize < {})", sz_exp)));
+            return Err(io::Error::new(
+                ErrorKind::Other,
+                format!("Header damaged (expected filesize < {})", sz_exp),
+            ));
         }
         let mut offset: usize = 16;
         if f_flags6.contains(Flags6::TRAINER) {
@@ -198,13 +229,23 @@ impl NesCartridge {
                         mirroring = Mirroring::HORIZONTAL;
                     }
                 }
-                println!("Found NROM (PRG:{} CHR:{} MAPPER:{} MIRRORING:{:?})", f_prg, f_chr, mapper_num, mirroring);
+                println!(
+                    "Found NROM (PRG:{} CHR:{} MAPPER:{} MIRRORING:{:?})",
+                    f_prg, f_chr, mapper_num, mirroring
+                );
                 mapper = Box::new(MapperNROM {
-                    data: Box::new(CatridgeData { mirroring, prg, chr })
+                    data: Box::new(CatridgeData {
+                        mirroring,
+                        prg,
+                        chr,
+                    }),
                 });
             }
             _ => {
-                return Err(io::Error::new(ErrorKind::Other, format!("Unsupported mapper #{}", mapper_num)));
+                return Err(io::Error::new(
+                    ErrorKind::Other,
+                    format!("Unsupported mapper #{}", mapper_num),
+                ));
             }
         }
 
@@ -217,7 +258,7 @@ impl NesCartridge {
             f_flags7: buffer[8],
             f_flags8: buffer[9],
             f_flags9: buffer[10],
-            f_flags10: buffer[11]
+            f_flags10: buffer[11],
         };
 
         Ok((cart, mapper))

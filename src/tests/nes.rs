@@ -1,17 +1,18 @@
 #[cfg(test)]
-
 use crate::sys;
-use crate::sys::{NES, Machine, MemoryAccessA16D8};
+use crate::sys::{Machine, MemoryAccessA16D8, NES};
 
 use std::path::{Path, PathBuf};
 
 fn res_nes() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("nes")
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("nes")
 }
 
 #[test]
 fn rom_cpu_nestest() {
-    let mut machine : NES = sys::NES::new();
+    let mut machine: NES = sys::NES::new();
 
     let filename = res_nes().join("nestest.nes");
     assert!(machine.insert_catridge(filename.to_str().unwrap()));

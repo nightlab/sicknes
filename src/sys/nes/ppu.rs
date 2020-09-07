@@ -40,7 +40,6 @@ pub struct PPU {
     emp_green: bool,
     emp_blue: bool,
 
-    startup: bool,
     rendering: bool,
 
     pub ppuctrl: u8,
@@ -59,13 +58,12 @@ pub struct PPU {
     pub pt_cur: u16,
     pub offset: u16,
 
-    pub rb: [[u8;4]; 2],
-    pub rb_idx: usize
-
+    pub rb: [[u8; 4]; 2],
+    pub rb_idx: usize,
 }
 
 impl PPU {
-    pub fn new() -> PPU { 
+    pub fn new() -> PPU {
         PPU {
             ciram: [0; 2048],
             palette: [0; 32],
@@ -96,8 +94,6 @@ impl PPU {
             emp_green: false,
             emp_blue: false,
 
-            startup: true,
-
             nt_cur: 0,
             at_cur: 0,
             pt_cur: 0,
@@ -112,17 +108,14 @@ impl PPU {
             count_v: 261,
             frame: 0,
 
-            rb: [ [ 0, 0, 0, 0 ], [ 0, 0, 0, 0 ] ],
-            rb_idx: 0
+            rb: [[0, 0, 0, 0], [0, 0, 0, 0]],
+            rb_idx: 0,
         }
     }
 
     pub fn reg_write(&mut self, mapper: &mut Box<dyn MapperAccess>, reg: u8, value: u8) {
         match reg {
             0 => {
-                if self.startup {
-                    return;
-                }
                 self.t = (self.t & 0x73FF) | ((value & 3) as u16) << 10; // update temporary register
                 self.ppuctrl = value & 0xbf;
 
@@ -131,9 +124,6 @@ impl PPU {
                 self.nmi = value & 0x80 > 0;
             }
             1 => {
-                if self.startup {
-                    return;
-                }
                 self.ppumask.bits = value;
 
                 self.greyscale = value & 0x1 > 0;
@@ -145,26 +135,28 @@ impl PPU {
                 self.emp_green = value & 0x40 > 0;
                 self.emp_blue = value & 0x80 > 0;
             }
-            2 => { panic!("Write {} on PPUSTATUS", value); }
-            3 => { self.oamaddr = value; }
-            4 => { self.oamdata = value; }
+            2 => {
+                panic!("Write {} on PPUSTATUS", value);
+            }
+            3 => {
+                self.oamaddr = value;
+            }
+            4 => {
+                self.oamdata = value;
+            }
             5 => {
-                if self.startup {
-                    return;
-                }
                 if self.w == 0 {
                     self.x = value & 0x7;
                     self.t = (self.t & 0x7FE0) | (value >> 3) as u16;
                     self.w = 1;
                 } else {
-                    self.t = (self.t & 0xc1f) | (((value & 0xf8) as u16) << 2) | (((value & 0x7) as u16) << 12);
+                    self.t = (self.t & 0xc1f)
+                        | (((value & 0xf8) as u16) << 2)
+                        | (((value & 0x7) as u16) << 12);
                     self.w = 0;
                 }
             }
             6 => {
-                if self.startup {
-                    return;
-                }
                 if self.w == 0 {
                     self.t = (self.t & 0x00ff) | (((value & 0x3f) as u16) << 8);
                     self.w = 1;
@@ -177,7 +169,10 @@ impl PPU {
             7 => {
                 //println!("PPU@{:#06X}={:#04X}", self.v, value);
                 if self.rendering && (self.show_bg || self.show_sp) {
-                    panic!("WARNING: Write PPUDATA @ {:#06x} while rendering! [{}.{}]", self.v, self.count_v, self.count_h);
+                    panic!(
+                        "WARNING: Write PPUDATA @ {:#06x} while rendering! [{}.{}]",
+                        self.v, self.count_v, self.count_h
+                    );
                 }
                 if self.v >= 0x3f00 {
                     self.palette[(self.v & 0x1f) as usize] = value;
@@ -186,27 +181,36 @@ impl PPU {
                 }
                 self.v = (self.v + self.vrinc) & 0x7FFF;
             }
-            _ => { panic!("Impossible PPU write on register {}", reg); }
+            _ => {
+                panic!("Impossible PPU write on register {}", reg);
+            }
         }
     }
 
     pub fn reg_read(&mut self, mapper: &mut Box<dyn MapperAccess>, reg: u8) -> u8 {
         match reg {
-            0 => { self.ppuctrl }
-            1 => { self.ppumask.bits }
+            0 => self.ppuctrl,
+            1 => self.ppumask.bits,
             2 => {
                 let old = self.ppustatus;
                 self.ppustatus = self.ppustatus & 0x7f; // reset vblank
                 self.w = 0; // reset scroll/adr latch
                 return old;
             }
-            3 => { self.oamaddr }
-            4 => { self.oamdata }
-            5 => { panic!("Read on PPUSCROLL"); }
-            6 => { panic!("Read on PPUADDR"); }
+            3 => self.oamaddr,
+            4 => self.oamdata,
+            5 => {
+                panic!("Read on PPUSCROLL");
+            }
+            6 => {
+                panic!("Read on PPUADDR");
+            }
             7 => {
                 if self.rendering && (self.show_bg || self.show_sp) {
-                    panic!("WARNING: Read PPUDATA @ {:#06x} while rendering! [{}.{}]", self.v, self.count_v, self.count_h);
+                    panic!(
+                        "WARNING: Read PPUDATA @ {:#06x} while rendering! [{}.{}]",
+                        self.v, self.count_v, self.count_h
+                    );
                 }
                 println!("Read on PPUDATA @ {:#06x}", self.v);
                 let res;
@@ -218,130 +222,48 @@ impl PPU {
                 self.v = (self.v + self.vrinc) & 0x7FFF;
                 res
             }
-            _ => { panic!("Impossible PPU write on register {}", reg); }
-        }
-    }
-
-    pub fn update(&mut self, mapper: &mut Box<dyn MapperAccess>, cc: u32) {
-        if self.startup {
-            if self.count_h > 29658*3 {
-                self.startup = false;
-                self.count_h = 0;
-                self.count_v = 0;
-            } else {
-                self.count_h = self.count_h + cc;
-            }
-            return;
-        }
-        for _ in 0..cc {
-            if self.count_h == 0 {
-                self.count_h = self.count_h + 1; // idle tick
-            } else {
-                match self.count_v {
-                    // render
-                    0..=239 => {
-                        match self.count_h {
-                            1 => {
-                                self.offset = self.count_v >> 3;
-                                self.nt_cur = self.nt_address + (self.offset * 32);
-                                self.at_cur = self.nt_cur + 0x3c0 + (self.offset * 32);
-                            }
-                            2..=256 => {
-                                if self.count_h & 1 == 0 {
-                                    let step = (self.count_h - 2) >> 1;
-                                    match step & 0x3 {
-                                        0 => {
-                                            self.rb[0][0] = mapper.read_chr_u8(&self.ciram, self.nt_cur);
-
-                                            /*if self.count_v % 8 == 0 {
-                                                //print!("{:04x} ", self.nt_cur);
-                                                if self.rb[0][0] != 0x24 {
-                                                    print!("{:02x} ", self.rb[0][0]);
-                                                } else {
-                                                    print!("   ");
-                                                }
-                                            }*/
-
-                                            self.nt_cur = self.nt_cur + 1;
-                                            self.pt_cur = self.bg_pt_adr + ((self.rb[0][0] as u16) << 4);
-                                        }
-                                        1 => { self.rb[0][1] = mapper.read_chr_u8(&self.ciram, self.at_cur); self.at_cur = self.at_cur + 1; }
-                                        2 => { self.rb[0][2] = mapper.read_chr_u8(&self.ciram, self.pt_cur); }
-                                        3 => { self.rb[0][3] = mapper.read_chr_u8(&self.ciram, self.pt_cur + 8); }
-                                        _ => { }
-                                    }
-                                }
-                            }
-                            340 => {
-                                /*if self.count_v % 8 == 0 {
-                                    println!("|");
-                                }*/
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // idle
-                    240..=260 => {
-                        if self.count_v == 241 && self.count_h == 1 {
-                            self.rendering = false;
-                            self.ppustatus = self.ppustatus | 0x80; // set vblank
-                            //println!("---------------------------------------------------------");
-                            self.frame = self.frame + 1;
-                            /*if self.frame > 120 {
-                                panic!("2 seconds");
-                            }*/
-                            if self.nmi {
-                                self.nmi_pending = true;
-                            }
-                        }
-                    }
-
-                    // prefetch
-                    261 => {
-                        match self.count_h {
-                            1 => {
-                               self.ppustatus = self.ppustatus & 0x7f; // reset vblank
-                            }
-                            320 => {
-                                self.nt_cur = self.nt_address;
-                                self.at_cur = self.nt_cur + 0x3c0;
-                                self.offset = 0;
-                            }
-                            
-                            /*322 => { self.rb[1][0] = mapper.read_chr_u8(&self.ciram, self.nt_cur); self.nt_cur = self.nt_cur + 1; self.pt_cur = self.bg_pt_adr + ((self.rb[0][0] as u16) << 4); }
-                            324 => { self.rb[1][1] = mapper.read_chr_u8(&self.ciram, self.at_cur); self.at_cur = self.at_cur + 1; }
-                            326 => { self.rb[1][2] = mapper.read_chr_u8(&self.ciram, self.pt_cur); }
-                            328 => { self.rb[1][3] = mapper.read_chr_u8(&self.ciram, self.pt_cur + 8); }
-
-                            330 => { self.rb[0][0] = mapper.read_chr_u8(&self.ciram, self.nt_cur); self.nt_cur = self.nt_cur + 1; self.pt_cur = self.bg_pt_adr + ((self.rb[0][0] as u16) << 4); }
-                            332 => { self.rb[0][1] = mapper.read_chr_u8(&self.ciram, self.at_cur); self.at_cur = self.at_cur + 1; }
-                            334 => { self.rb[0][2] = mapper.read_chr_u8(&self.ciram, self.pt_cur); }
-                            336 => { self.rb[0][3] = mapper.read_chr_u8(&self.ciram, self.pt_cur + 8); }
-*/
-                            340 => {
-                                self.rendering = true;
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    _ => { panic!("Invalid scanline {}", self.count_v); }
-                }
-
-                self.count_h = self.count_h + 1;
-                if self.count_h == 341 {
-                    self.count_h = 0;
-                    self.count_v = self.count_v + 1;
-                    if self.count_v == 262 {
-                        self.count_v = 0;
-                    }
-                }
+            _ => {
+                panic!("Impossible PPU write on register {}", reg);
             }
         }
     }
 
-    pub fn start_dma(&mut self, _page: u8) {
+    pub fn update(&mut self, _mapper: &mut Box<dyn MapperAccess>) {
+        match self.count_v {
+            // render
+            0..=239 => {}
 
+            // idle
+            240 => {
+                self.rendering = false;
+                self.ppustatus = self.ppustatus | 0x80; // set vblank
+                self.frame = self.frame + 1;
+                if self.nmi {
+                    self.nmi_pending = true;
+                }
+            }
+
+            // vblank
+            241..=260 => {}
+
+            // prefetch
+            261 => {
+                self.ppustatus = self.ppustatus & 0x7f; // reset vblank
+                self.nt_cur = self.nt_address;
+                self.at_cur = self.nt_cur + 0x3c0;
+                self.offset = 0;
+                self.rendering = true;
+            }
+
+            _ => {
+                panic!("Invalid scanline {}", self.count_v);
+            }
+        }
+        self.count_v = self.count_v + 1;
+        if self.count_v == 262 {
+            self.count_v = 0;
+        }
     }
+
+    pub fn start_dma(&mut self, _page: u8) {}
 }

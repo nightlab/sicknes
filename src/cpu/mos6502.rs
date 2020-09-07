@@ -1,7 +1,7 @@
 extern crate bitflags;
 
-use std::fmt;
 use crate::sys;
+use std::fmt;
 
 bitflags! {
     #[derive(Default)]
@@ -25,7 +25,7 @@ pub struct Mos6502 {
     p: Status,
     pub pc: u16,
     pub cycle: u32,
-    pub cfg_iops: bool
+    pub cfg_iops: bool,
 }
 
 macro_rules! o_inc {
@@ -33,7 +33,7 @@ macro_rules! o_inc {
         $this.$reg = $this.$reg.wrapping_add(1);
         f_nz!($this, $this.$reg);
         t_upc!($this, $len);
-    }
+    };
 }
 
 macro_rules! o_dec {
@@ -41,7 +41,7 @@ macro_rules! o_dec {
         $this.$reg = $this.$reg.wrapping_sub(1);
         f_nz!($this, $this.$reg);
         t_upc!($this, $len);
-    }
+    };
 }
 
 macro_rules! o_store_zp {
@@ -49,23 +49,26 @@ macro_rules! o_store_zp {
         let adr = $this.a_imm($bus) as u16;
         $bus.write_u8(adr, $this.$reg);
         t_upc!($this, $len);
-    }
+    };
 }
 
 macro_rules! f_nz {
     ($this:ident, $value:expr) => {
         $this.p.set(Status::ZERO, $value == 0);
         $this.p.set(Status::NEGATIVE, ($value & 0x80) > 0);
-    }
+    };
 }
 
 macro_rules! t_upc {
-    ($this:ident, $len:expr) => { $this.pc = $this.pc.wrapping_add($len); }
+    ($this:ident, $len:expr) => {
+        $this.pc = $this.pc.wrapping_add($len);
+    };
 }
 
 impl fmt::Display for Mos6502 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
+        write!(
+            f,
             "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             self.a, self.x, self.y, self.p, self.s
         )
@@ -73,12 +76,16 @@ impl fmt::Display for Mos6502 {
 }
 
 impl Mos6502 {
-    pub fn new(cfg_iops: bool) -> Mos6502 { 
+    pub fn new(cfg_iops: bool) -> Mos6502 {
         Mos6502 {
-            a: 0, x: 0, y: 0, s: 0,
+            a: 0,
+            x: 0,
+            y: 0,
+            s: 0,
             p: Status { bits: 0 },
-            pc: 0, cycle: 0,
-            cfg_iops
+            pc: 0,
+            cycle: 0,
+            cfg_iops,
         }
     }
 
@@ -87,7 +94,7 @@ impl Mos6502 {
         self.x = 1;
         self.y = 0;
         self.s = 0xfd;
-        self.p.bits = 0x24; // @todo bit 4 set after reset or not??? 
+        self.p.bits = 0x24; // @todo bit 4 set after reset or not???
         self.pc = (bus.read_u8(0xfffd, false) as u16) << 8 | bus.read_u8(0xfffc, false) as u16;
         self.cycle = 7;
     }
@@ -103,7 +110,7 @@ impl Mos6502 {
 
             0x4c /* JMP abs */ => { self.dump_abs16(bus, "JMP") }
             0x6c /* JMP (abs) */ => { self.dump_abs_ind(bus, "JMP") }
-            
+
             0x78 /* SEI */ => { (format!("SEI"), 1) }
             0x38 /* SEC */ => { (format!("SEC"), 1) }
             0xf8 /* SED */ => { (format!("SED"), 1) }
@@ -144,7 +151,7 @@ impl Mos6502 {
             0x39 /* AND abs,Y */ => { self.dump_abs_y(bus, "AND") }
             0x21 /* AND (ind,X) */ => { self.dump_idx_x(bus, "AND") }
             0x31 /* AND (ind),Y */ => { self.dump_ind_y(bus, "AND") }
-            
+
             0x09 /* ORA imm */ => { self.dump_imm(bus, "ORA") }
             0x05 /* ORA zp */ => { self.dump_zp(bus, "ORA") }
             0x15 /* ORA zp,X */ => { self.dump_zp_x(bus, "ORA") }
@@ -153,7 +160,7 @@ impl Mos6502 {
             0x19 /* ORA abs,Y */ => { self.dump_abs_y(bus, "ORA") }
             0x01 /* ORA (ind,X) */ => { self.dump_idx_x(bus, "ORA") }
             0x11 /* ORA (ind),Y */ => { self.dump_ind_y(bus, "ORA") }
-            
+
             0x49 /* EOR imm */ => { self.dump_imm(bus, "EOR") }
             0x45 /* EOR zp */ => { self.dump_zp(bus, "EOR") }
             0x55 /* EOR zp,X */ => { self.dump_zp_x(bus, "EOR") }
@@ -168,7 +175,7 @@ impl Mos6502 {
             0x16 /* ASL zp,X */ => { self.dump_zp_x(bus, "ASL") }
             0x0e /* ASL abs */ => { self.dump_abs16(bus, "ASL") }
             0x1e /* ASL abs,X */ => { self.dump_abs_x(bus, "ASL") }
-            
+
             0x4a /* LSR A */ => { (format!("LSR A"), 1) }
             0x46 /* LSR zp */ => { self.dump_zp(bus, "LSR") }
             0x56 /* LSR zp,X */ => { self.dump_zp_x(bus, "LSR") }
@@ -186,7 +193,7 @@ impl Mos6502 {
             0x36 /* ROL zp,X */ => { self.dump_zp_x(bus, "ROL") }
             0x2e /* ROL abs */ => { self.dump_abs16(bus, "ROL") }
             0x3e /* ROL abs,X */ => { self.dump_abs_x(bus, "ROL") }
-            
+
             0x69 /* ADC imm */ => { self.dump_imm(bus, "ADC") }
             0x65 /* ADC zp */ => { self.dump_zp(bus, "ADC") }
             0x75 /* ADC zp,X */ => { self.dump_zp_x(bus, "ADC") }
@@ -236,7 +243,7 @@ impl Mos6502 {
             0xb6 /* LDX zp,Y */ => { self.dump_zp_y(bus, "LDX") }
             0xae /* LDX abs */ => { self.dump_abs16(bus, "LDX") }
             0xbe /* LDX abs,Y */ => { self.dump_abs_y(bus, "LDX") }
-            
+
             0xa0 /* LDY imm */ => { self.dump_imm(bus, "LDY") }
             0xa4 /* LDY zp */ => { self.dump_zp(bus, "LDY") }
             0xb4 /* LDY zp,X */ => { self.dump_zp_x(bus, "LDY") }
@@ -276,7 +283,7 @@ impl Mos6502 {
 
             0x00 /* BRK */ => { (format!("BRK"), 1) }
 
-            _ => { 
+            _ => {
                 // illegal opcodes
                 if self.cfg_iops {
                     match op {
@@ -360,56 +367,154 @@ impl Mos6502 {
 
     pub fn dump_zp(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let a = self.a_imm(bus);
-        (format!("{} ${:02X} = {:02X}", mnemonic, a, bus.read_u8(a as u16, true)), 2)
+        (
+            format!(
+                "{} ${:02X} = {:02X}",
+                mnemonic,
+                a,
+                bus.read_u8(a as u16, true)
+            ),
+            2,
+        )
     }
 
     pub fn dump_zp_x(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let base = bus.read_u8(self.pc.wrapping_add(1), true);
         let adr = base.wrapping_add(self.x);
-        (format!("{} ${:02X},X @ ${:02X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr as u16, false)), 2)
+        (
+            format!(
+                "{} ${:02X},X @ ${:02X} = {:02X}",
+                mnemonic,
+                base,
+                adr,
+                bus.read_u8(adr as u16, false)
+            ),
+            2,
+        )
     }
 
     pub fn dump_zp_y(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
         let base = bus.read_u8(self.pc.wrapping_add(1), true);
         let adr = base.wrapping_add(self.y);
-        (format!("{} ${:02X},X @ ${:02X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr as u16, false)), 2)
+        (
+            format!(
+                "{} ${:02X},X @ ${:02X} = {:02X}",
+                mnemonic,
+                base,
+                adr,
+                bus.read_u8(adr as u16, false)
+            ),
+            2,
+        )
     }
 
-    pub fn dump_idx_x(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
+    pub fn dump_idx_x(
+        &self,
+        bus: &mut dyn sys::MemoryAccessA16D8,
+        mnemonic: &str,
+    ) -> (String, u16) {
         let z = self.a_imm(bus);
         let a = self.a_idx_x(bus) as u16;
-        (format!("{} (${:02X},X) @ {:02X} = {:04X} = {:02X}", mnemonic, z, z.wrapping_add(self.x), a, bus.read_u8(a as u16, true)), 2)
+        (
+            format!(
+                "{} (${:02X},X) @ {:02X} = {:04X} = {:02X}",
+                mnemonic,
+                z,
+                z.wrapping_add(self.x),
+                a,
+                bus.read_u8(a as u16, true)
+            ),
+            2,
+        )
     }
 
-    pub fn dump_ind_y(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
+    pub fn dump_ind_y(
+        &self,
+        bus: &mut dyn sys::MemoryAccessA16D8,
+        mnemonic: &str,
+    ) -> (String, u16) {
         let zp_adr = bus.read_u8(self.pc.wrapping_add(1), false);
-        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16, false) as u16) << 8 | bus.read_u8(zp_adr as u16, false) as u16;
+        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16, false) as u16) << 8
+            | bus.read_u8(zp_adr as u16, false) as u16;
         let adr = base.wrapping_add(self.y as u16);
-        (format!("{} (${:02X}),Y = {:04X} @ {:04X} = {:02X}", mnemonic, zp_adr, base, adr, bus.read_u8(adr, true)), 2)
+        (
+            format!(
+                "{} (${:02X}),Y = {:04X} @ {:04X} = {:02X}",
+                mnemonic,
+                zp_adr,
+                base,
+                adr,
+                bus.read_u8(adr, true)
+            ),
+            2,
+        )
     }
 
-    pub fn dump_abs16(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
+    pub fn dump_abs16(
+        &self,
+        bus: &mut dyn sys::MemoryAccessA16D8,
+        mnemonic: &str,
+    ) -> (String, u16) {
         let a = self.a_abs16(bus);
-        (format!("{} ${:04X} = {:02X}", mnemonic, a, bus.read_u8(a as u16, true)), 2)
+        (
+            format!(
+                "{} ${:04X} = {:02X}",
+                mnemonic,
+                a,
+                bus.read_u8(a as u16, true)
+            ),
+            2,
+        )
     }
 
-    pub fn dump_abs_x(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
+    pub fn dump_abs_x(
+        &self,
+        bus: &mut dyn sys::MemoryAccessA16D8,
+        mnemonic: &str,
+    ) -> (String, u16) {
         let base = self.a_abs16(bus);
         let adr = base.wrapping_add(self.y as u16);
-        (format!("{} ${:04X},X @ {:04X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr, true)), 3)
+        (
+            format!(
+                "{} ${:04X},X @ {:04X} = {:02X}",
+                mnemonic,
+                base,
+                adr,
+                bus.read_u8(adr, true)
+            ),
+            3,
+        )
     }
 
-    pub fn dump_abs_y(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
+    pub fn dump_abs_y(
+        &self,
+        bus: &mut dyn sys::MemoryAccessA16D8,
+        mnemonic: &str,
+    ) -> (String, u16) {
         let base = self.a_abs16(bus);
         let adr = base.wrapping_add(self.y as u16);
-        (format!("{} ${:04X},Y @ {:04X} = {:02X}", mnemonic, base, adr, bus.read_u8(adr, true)), 3)
+        (
+            format!(
+                "{} ${:04X},Y @ {:04X} = {:02X}",
+                mnemonic,
+                base,
+                adr,
+                bus.read_u8(adr, true)
+            ),
+            3,
+        )
     }
 
-    pub fn dump_abs_ind(&self, bus: &mut dyn sys::MemoryAccessA16D8, mnemonic: &str) -> (String, u16) {
+    pub fn dump_abs_ind(
+        &self,
+        bus: &mut dyn sys::MemoryAccessA16D8,
+        mnemonic: &str,
+    ) -> (String, u16) {
         let base = self.a_abs16(bus);
         let target;
         if base & 0xff == 0xff {
-            target = (bus.read_u8(base & 0xff00, false) as u16) << 8 | bus.read_u8(base, false) as u16;
+            target =
+                (bus.read_u8(base & 0xff00, false) as u16) << 8 | bus.read_u8(base, false) as u16;
         } else {
             target = (bus.read_u8(base + 1, false) as u16) << 8 | bus.read_u8(base, false) as u16;
         }
@@ -437,7 +542,7 @@ impl Mos6502 {
         let target;
         if is_nmi {
             target = (bus.read_u8(0xfffb, false) as u16) << 8 | bus.read_u8(0xfffa, false) as u16;
-            //println!("CPU: NMI @ ${:06X} STATUS=${:04X} -> ${:06X}", self.pc, self.p, target);
+        //println!("CPU: NMI @ ${:06X} STATUS=${:04X} -> ${:06X}", self.pc, self.p, target);
         } else {
             target = (bus.read_u8(0xffff, false) as u16) << 8 | bus.read_u8(0xfffe, false) as u16;
             //println!("CPU: IRQ @ ${:06X} STATUS=${:04X} -> ${:06X}", self.pc, self.p, target);
@@ -449,6 +554,15 @@ impl Mos6502 {
     // execute opcode
     pub fn exec_op(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, op: u8) -> u32 {
         match op {
+            0xb0 /* BCS rel */ => { self.t_branch(bus, self.p.contains(Status::CARRY)) }
+            0x90 /* BCC rel */ => { self.t_branch(bus, !self.p.contains(Status::CARRY)) }
+            0xf0 /* BEQ rel */ => { self.t_branch(bus, self.p.contains(Status::ZERO)) }
+            0xd0 /* BNE rel */ => { self.t_branch(bus, !self.p.contains(Status::ZERO)) }
+            0x70 /* BVS rel */ => { self.t_branch(bus, self.p.contains(Status::OVERFLOW)) }
+            0x50 /* BVC rel */ => { self.t_branch(bus, !self.p.contains(Status::OVERFLOW)) }
+            0x30 /* BMI rel */ => { self.t_branch(bus, self.p.contains(Status::NEGATIVE)) }
+            0x10 /* BPL rel */ => { self.t_branch(bus, !self.p.contains(Status::NEGATIVE)) }
+
             0x08 /* PHP */ => { bus.write_u8(0x100 + self.s as u16, self.p.bits | 0x30); self.s = self.s.wrapping_sub(1); self.fin(1, 3) }
             0x48 /* PHA */ => { bus.write_u8(0x100 + self.s as u16, self.a); self.s = self.s.wrapping_sub(1); self.fin(1, 3) }
             0x68 /* PLA */ => { self.s = self.s.wrapping_add(1); self.a = bus.read_u8(0x100 + self.s as u16, false); f_nz!(self, self.a); self.fin(1, 4) }
@@ -458,7 +572,7 @@ impl Mos6502 {
                 self.p.remove(Status::BREAK);
                 self.fin(1, 4)
             }
-            
+
             0x40 /* RTI */ => {
                 self.s = self.s.wrapping_add(1);
                 self.p.bits = bus.read_u8(0x100 + self.s as u16, false) | 0x20;
@@ -467,7 +581,7 @@ impl Mos6502 {
                 self.s = self.s.wrapping_add(1);
                 self.pc = ra | ((bus.read_u8(0x100 + self.s as u16, false) as u16) << 8);
                 6 /*CYCLES*/
-            }            
+            }
 
             0x4c /* JMP abs */ => { self.pc = self.a_abs16(bus); 3 /*CYCLES*/ }
             0x6c /* JMP (abs) */ => {
@@ -494,7 +608,7 @@ impl Mos6502 {
             0xfe /* INC abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_inc(op)); self.fin(3, 7) }
             0xe8 /* INX */ => { o_inc!(self, x, 1 /*LEN*/); 2 /*CYCLES*/ }
             0xc8 /* INY */ => { o_inc!(self, y, 1 /*LEN*/); 2 /*CYCLES*/ }
-            
+
             0xc6 /* DEC zp */ => { let (op, adr) = self.a_zp(bus); bus.write_u8(adr, self.o_dec(op)); self.fin(2, 5) }
             0xd6 /* DEC zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_dec(op)); self.fin(2, 6) }
             0xce /* DEC abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_dec(op)); self.fin(3, 6) }
@@ -544,7 +658,7 @@ impl Mos6502 {
             0x16 /* ASL zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_asl(op)); self.fin(2, 6) }
             0x0e /* ASL abs */ => { let a = self.a_abs16(bus); let op = bus.read_u8(a, false); bus.write_u8(a, self.o_asl(op)); self.fin(3, 6) }
             0x1e /* ASL abs,X */ => { let a = self.a_abs_x(bus).0; let op = bus.read_u8(a, false); bus.write_u8(a, self.o_asl(op)); self.fin(3, 7) }
-            
+
             0x4a /* LSR A */ => { self.a = self.o_lsr(self.a); self.fin(1, 2) }
             0x46 /* LSR zp */ => { let (op, a) = self.a_zp(bus); bus.write_u8(a, self.o_lsr(op)); self.fin(2, 5) }
             0x56 /* LSR zp,X */ => { let a = self.a_zp_x(bus); let op = bus.read_u8(a as u16, false); bus.write_u8(a as u16, self.o_lsr(op)); self.fin(2, 6) }
@@ -584,7 +698,7 @@ impl Mos6502 {
             0xc0 /* CPY imm */ => { self.o_cmp(self.y, self.a_imm(bus)); self.fin(2, 2) }
             0xc4 /* CPY zp */ => { self.o_cmp(self.y, self.a_zp(bus).0); self.fin(2, 3) }
             0xcc /* CPY abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.y, bus.read_u8(a, false)); self.fin(3, 4) }
-            
+
             0xe0 /* CPX imm */ => { self.o_cmp(self.x, self.a_imm(bus)); self.fin(2, 2) }
             0xe4 /* CPX zp */ => { self.o_cmp(self.x, self.a_zp(bus).0); self.fin(2, 3) }
             0xec /* CPX abs */ => { let a = self.a_abs16(bus); self.o_cmp(self.x, bus.read_u8(a, false)); self.fin(3, 4) }
@@ -598,14 +712,6 @@ impl Mos6502 {
             0xe1 /* SBC (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = self.o_adc(self.a, !bus.read_u8(a, false)); self.fin(2, 6) }
             0xf1 /* SBC (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = self.o_adc(self.a, !bus.read_u8(a, false)); self.fin(2, 5 + xtra) }
 
-            0xa9 /* LDA imm */ => { self.a = self.a_imm(bus); f_nz!(self, self.a); self.fin(2, 2) }
-            0xa5 /* LDA zp */ => { self.a = self.a_zp(bus).0; f_nz!(self, self.a); self.fin(2, 3) }
-            0xb5 /* LDA zp,X */ => { let a = self.a_zp_x(bus); self.a = bus.read_u8(a as u16, false); f_nz!(self, self.a); self.fin(2, 4) }
-            0xad /* LDA abs */ => { let a = self.a_abs16(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4) }
-            0xbd /* LDA abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
-            0xb9 /* LDA abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
-            0xa1 /* LDA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(2, 6) }
-            0xb1 /* LDA (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(2, 5 + xtra) }
 
             0xa2 /* LDX imm */ => { self.x = self.a_imm(bus); f_nz!(self, self.x); self.fin(2, 2) }
             0xa6 /* LDX zp */ => { self.x = self.a_zp(bus).0; f_nz!(self, self.x); self.fin(2, 3) }
@@ -618,6 +724,15 @@ impl Mos6502 {
             0xb4 /* LDY zp,X */ => { let a = self.a_zp_x(bus); self.y = bus.read_u8(a as u16, false); f_nz!(self, self.y); self.fin(2, 4) }
             0xac /* LDY abs */ => { let a = self.a_abs16(bus); self.y = bus.read_u8(a, false); f_nz!(self, self.y); self.fin(3, 4) }
             0xbc /* LDY abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.y = bus.read_u8(a, false); f_nz!(self, self.y); self.fin(3, 4 + xtra) }
+
+            0xa9 /* LDA imm */ => { self.a = self.a_imm(bus); f_nz!(self, self.a); self.fin(2, 2) }
+            0xa5 /* LDA zp */ => { self.a = self.a_zp(bus).0; f_nz!(self, self.a); self.fin(2, 3) }
+            0xb5 /* LDA zp,X */ => { let a = self.a_zp_x(bus); self.a = bus.read_u8(a as u16, false); f_nz!(self, self.a); self.fin(2, 4) }
+            0xad /* LDA abs */ => { let a = self.a_abs16(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4) }
+            0xbd /* LDA abs,X */ => { let (a, xtra) = self.a_abs_x(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
+            0xb9 /* LDA abs,Y */ => { let (a, xtra) = self.a_abs_y(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(3, 4 + xtra) }
+            0xa1 /* LDA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(2, 6) }
+            0xb1 /* LDA (ind),Y */ => { let (a, xtra) = self.a_ind_y(bus); self.a = bus.read_u8(a, false); f_nz!(self, self.a); self.fin(2, 5 + xtra) }
 
             0x85 /* STA zp */ => { o_store_zp!(self, bus, a, 2 /*LEN*/); 3 /*CYCLES*/ }
             0x95 /* STA zp,X */ => { let a = self.a_zp_x(bus); bus.write_u8(a as u16, self.a); self.fin(2, 4) }
@@ -646,15 +761,6 @@ impl Mos6502 {
                 6 /*CYCLES*/
             }
 
-            0xb0 /* BCS rel */ => { self.t_branch(bus, self.p.contains(Status::CARRY)) }
-            0x90 /* BCC rel */ => { self.t_branch(bus, !self.p.contains(Status::CARRY)) }
-            0xf0 /* BEQ rel */ => { self.t_branch(bus, self.p.contains(Status::ZERO)) }
-            0xd0 /* BNE rel */ => { self.t_branch(bus, !self.p.contains(Status::ZERO)) }
-            0x70 /* BVS rel */ => { self.t_branch(bus, self.p.contains(Status::OVERFLOW)) }
-            0x50 /* BVC rel */ => { self.t_branch(bus, !self.p.contains(Status::OVERFLOW)) }
-            0x30 /* BMI rel */ => { self.t_branch(bus, self.p.contains(Status::NEGATIVE)) }
-            0x10 /* BPL rel */ => { self.t_branch(bus, !self.p.contains(Status::NEGATIVE)) }
-
             0xea /* NOP */ => { self.fin(1, 2) }
 
             0x60 /* RTS */ => {
@@ -680,7 +786,7 @@ impl Mos6502 {
                 7 /*CYCLES*/
             }
 
-            _ => { 
+            _ => {
                 if self.cfg_iops {
                     // illegal opcodes
                     match op {
@@ -706,49 +812,49 @@ impl Mos6502 {
                         0xeb /* SBC imm */ => { self.a = self.o_adc(self.a, !self.a_imm(bus)); self.fin(2, 2) }
 
                         0xc7 /* DCP zp */ => { let a = self.a_imm(bus); self.oi_dcp(bus, a as u16); self.fin(2, 5) }
-                        0xd7 /* DCP zp,X */ => { let a = self.a_zp_x(bus); self.oi_dcp(bus, a as u16); self.fin(2, 6) }                        
+                        0xd7 /* DCP zp,X */ => { let a = self.a_zp_x(bus); self.oi_dcp(bus, a as u16); self.fin(2, 6) }
                         0xcf /* DCP abs */ => { let a = self.a_abs16(bus); self.oi_dcp(bus, a); self.fin(3, 6) }
-                        0xdf /* DCP abs,X */ => { let (a, _) = self.a_abs_x(bus); self.oi_dcp(bus, a); self.fin(3, 7) }                        
+                        0xdf /* DCP abs,X */ => { let (a, _) = self.a_abs_x(bus); self.oi_dcp(bus, a); self.fin(3, 7) }
                         0xdb /* DCP abs,Y */ => { let (a, _) = self.a_abs_y(bus); self.oi_dcp(bus, a); self.fin(3, 7) }
                         0xc3 /* DCP (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_dcp(bus, a); self.fin(2, 8) }
                         0xd3 /* DCP (ind),Y */ => { let (a, _) = self.a_ind_y(bus); self.oi_dcp(bus, a); self.fin(2, 8) }
 
                         0xe7 /* ISB zp */ => { let a = self.a_imm(bus) as u16; self.oi_isb(bus, a); self.fin(2, 5) }
-                        0xf7 /* ISB zp,X */ => { let a = self.a_zp_x(bus); self.oi_isb(bus, a as u16); self.fin(2, 6) }                        
+                        0xf7 /* ISB zp,X */ => { let a = self.a_zp_x(bus); self.oi_isb(bus, a as u16); self.fin(2, 6) }
                         0xef /* ISB abs */ => { let a = self.a_abs16(bus); self.oi_isb(bus, a); self.fin(3, 6) }
-                        0xff /* ISB abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_isb(bus, a); self.fin(3, 7) }                        
+                        0xff /* ISB abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_isb(bus, a); self.fin(3, 7) }
                         0xfb /* ISB abs,Y */ => { let a = self.a_abs_y(bus).0; self.oi_isb(bus, a); self.fin(3, 7) }
                         0xe3 /* ISB (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_isb(bus, a); self.fin(2, 8) }
                         0xf3 /* ISB (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_isb(bus, a); self.fin(2, 8) }
 
                         0x07 /* SLO zp */ => { let a = self.a_imm(bus) as u16; self.oi_slo(bus, a); self.fin(2, 5) }
-                        0x17 /* SLO zp,X */ => { let a = self.a_zp_x(bus); self.oi_slo(bus, a as u16); self.fin(2, 6) }                        
+                        0x17 /* SLO zp,X */ => { let a = self.a_zp_x(bus); self.oi_slo(bus, a as u16); self.fin(2, 6) }
                         0x0f /* SLO abs */ => { let a = self.a_abs16(bus); self.oi_slo(bus, a); self.fin(3, 6) }
-                        0x1f /* SLO abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_slo(bus, a); self.fin(3, 7) }                        
+                        0x1f /* SLO abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_slo(bus, a); self.fin(3, 7) }
                         0x1b /* SLO abs,Y */ => { let a = self.a_abs_y(bus).0; self.oi_slo(bus, a); self.fin(3, 7) }
                         0x03 /* SLO (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_slo(bus, a); self.fin(2, 8) }
                         0x13 /* SLO (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_slo(bus, a); self.fin(2, 8) }
 
                         0x27 /* RLA zp */ => { let a = self.a_imm(bus) as u16; self.oi_rla(bus, a); self.fin(2, 5) }
-                        0x37 /* RLA zp,X */ => { let a = self.a_zp_x(bus); self.oi_rla(bus, a as u16); self.fin(2, 6) }                        
+                        0x37 /* RLA zp,X */ => { let a = self.a_zp_x(bus); self.oi_rla(bus, a as u16); self.fin(2, 6) }
                         0x2f /* RLA abs */ => { let a = self.a_abs16(bus); self.oi_rla(bus, a); self.fin(3, 6) }
-                        0x3f /* RLA abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_rla(bus, a); self.fin(3, 7) }                        
+                        0x3f /* RLA abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_rla(bus, a); self.fin(3, 7) }
                         0x3b /* RLA abs,Y */ => { let a = self.a_abs_y(bus).0; self.oi_rla(bus, a); self.fin(3, 7) }
                         0x23 /* RLA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_rla(bus, a); self.fin(2, 8) }
                         0x33 /* RLA (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_rla(bus, a); self.fin(2, 8) }
 
                         0x47 /* SRE zp */ => { let a = self.a_imm(bus) as u16; self.oi_sre(bus, a); self.fin(2, 5) }
-                        0x57 /* SRE zp,X */ => { let a = self.a_zp_x(bus); self.oi_sre(bus, a as u16); self.fin(2, 6) }                        
+                        0x57 /* SRE zp,X */ => { let a = self.a_zp_x(bus); self.oi_sre(bus, a as u16); self.fin(2, 6) }
                         0x4f /* SRE abs */ => { let a = self.a_abs16(bus); self.oi_sre(bus, a); self.fin(3, 6) }
-                        0x5f /* SRE abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_sre(bus, a); self.fin(3, 7) }                        
+                        0x5f /* SRE abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_sre(bus, a); self.fin(3, 7) }
                         0x5b /* SRE abs,Y */ => { let a = self.a_abs_y(bus).0; self.oi_sre(bus, a); self.fin(3, 7) }
                         0x43 /* SRE (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_sre(bus, a); self.fin(2, 8) }
                         0x53 /* SRE (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_sre(bus, a); self.fin(2, 8) }
 
                         0x67 /* RRA zp */ => { let a = self.a_imm(bus) as u16; self.oi_rra(bus, a); self.fin(2, 5) }
-                        0x77 /* RRA zp,X */ => { let a = self.a_zp_x(bus); self.oi_rra(bus, a as u16); self.fin(2, 6) }                        
+                        0x77 /* RRA zp,X */ => { let a = self.a_zp_x(bus); self.oi_rra(bus, a as u16); self.fin(2, 6) }
                         0x6f /* RRA abs */ => { let a = self.a_abs16(bus); self.oi_rra(bus, a); self.fin(3, 6) }
-                        0x7f /* RRA abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_rra(bus, a); self.fin(3, 7) }                        
+                        0x7f /* RRA abs,X */ => { let a = self.a_abs_x(bus).0; self.oi_rra(bus, a); self.fin(3, 7) }
                         0x7b /* RRA abs,Y */ => { let a = self.a_abs_y(bus).0; self.oi_rra(bus, a); self.fin(3, 7) }
                         0x63 /* RRA (ind,X) */ => { let a = self.a_idx_x(bus) as u16; self.oi_rra(bus, a); self.fin(2, 8) }
                         0x73 /* RRA (ind),Y */ => { let a = self.a_ind_y(bus).0; self.oi_rra(bus, a); self.fin(2, 8) }
@@ -763,7 +869,13 @@ impl Mos6502 {
     }
 
     // lda + ldx
-    pub fn oi_lax(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, adr: u16, size: u16, cycles: u32) -> u32 {
+    pub fn oi_lax(
+        &mut self,
+        bus: &mut dyn sys::MemoryAccessA16D8,
+        adr: u16,
+        size: u16,
+        cycles: u32,
+    ) -> u32 {
         self.a = bus.read_u8(adr as u16, false);
         self.x = self.a;
         f_nz!(self, self.a);
@@ -836,7 +948,13 @@ impl Mos6502 {
     // relative addressing: sign extend and calc pc offset
     pub fn a_rel(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u16 {
         let offset = bus.read_u8(self.pc.wrapping_add(1), false) as u16;
-        self.pc.wrapping_add(2 + if offset & 0x80 == 0x80 { 0xff00 | offset } else { offset })
+        self.pc.wrapping_add(
+            2 + if offset & 0x80 == 0x80 {
+                0xff00 | offset
+            } else {
+                offset
+            },
+        )
     }
 
     // zeropage addressing
@@ -846,13 +964,15 @@ impl Mos6502 {
 
     // absolute addressing (address)
     pub fn a_abs16(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u16 {
-        (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1), false) as u16
+        (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8
+            | bus.read_u8(self.pc.wrapping_add(1), false) as u16
     }
 
     // absolute x-indexed
     // returns: address + extra cycle for page boundary
     pub fn a_abs_x(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u16, u32) {
-        let base = (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1), false) as u16;
+        let base = (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8
+            | bus.read_u8(self.pc.wrapping_add(1), false) as u16;
         let adr = base.wrapping_add(self.x as u16);
         (adr, ((adr & 0xff00) != (base & 0xff00)) as u32)
     }
@@ -860,11 +980,12 @@ impl Mos6502 {
     // absolute y-indexed
     // returns: address + extra cycle for page boundary
     pub fn a_abs_y(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u16, u32) {
-        let base = (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8 | bus.read_u8(self.pc.wrapping_add(1), false) as u16;
+        let base = (bus.read_u8(self.pc.wrapping_add(2), false) as u16) << 8
+            | bus.read_u8(self.pc.wrapping_add(1), false) as u16;
         let adr = base.wrapping_add(self.y as u16);
         (adr, ((adr & 0xff00) != (base & 0xff00)) as u32)
     }
-    
+
     // zeropage addressing (operand + address)
     // returns: value + address
     pub fn a_zp(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u8, u16) {
@@ -874,35 +995,44 @@ impl Mos6502 {
 
     // zeropage x-indexed addressing
     pub fn a_zp_x(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
-        bus.read_u8(self.pc.wrapping_add(1), false).wrapping_add(self.x)
+        bus.read_u8(self.pc.wrapping_add(1), false)
+            .wrapping_add(self.x)
     }
 
     // zeropage y-indexed addressing
     pub fn a_zp_y(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u8 {
-        bus.read_u8(self.pc.wrapping_add(1), false).wrapping_add(self.y)
+        bus.read_u8(self.pc.wrapping_add(1), false)
+            .wrapping_add(self.y)
     }
 
     // indexed indirect x
     // returns: address
     pub fn a_idx_x(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> u16 {
-        let base: u8 = bus.read_u8(self.pc.wrapping_add(1), false).wrapping_add(self.x);
-        (bus.read_u8(base.wrapping_add(1) as u16, false) as u16) << 8 | bus.read_u8(base as u16, false) as u16
+        let base: u8 = bus
+            .read_u8(self.pc.wrapping_add(1), false)
+            .wrapping_add(self.x);
+        (bus.read_u8(base.wrapping_add(1) as u16, false) as u16) << 8
+            | bus.read_u8(base as u16, false) as u16
     }
 
     // indirect indexed y
     // returns: address + extra cycle for page boundary
     pub fn a_ind_y(&self, bus: &mut dyn sys::MemoryAccessA16D8) -> (u16, u32) {
         let zp_adr = bus.read_u8(self.pc.wrapping_add(1), false);
-        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16, false) as u16) << 8 | bus.read_u8(zp_adr as u16, false) as u16;
+        let base = (bus.read_u8(zp_adr.wrapping_add(1) as u16, false) as u16) << 8
+            | bus.read_u8(zp_adr as u16, false) as u16;
         let adr = base.wrapping_add(self.y as u16);
         (adr, ((adr & 0xff00) != (base & 0xff00)) as u32)
-    }    
+    }
 
     // binary mode "add with carry"
     pub fn o_adc(&mut self, reg: u8, operand: u8) -> u8 {
         let res16 = reg as u16 + operand as u16 + self.p.contains(Status::CARRY) as u16;
         let res = (res16 & 0xff) as u8;
-        self.p.set(Status::OVERFLOW, ((!(reg ^ operand)) & (reg ^ res)) & 0x80 == 0x80);
+        self.p.set(
+            Status::OVERFLOW,
+            ((!(reg ^ operand)) & (reg ^ res)) & 0x80 == 0x80,
+        );
         self.p.set(Status::CARRY, res16 > 0xff);
         self.p.set(Status::ZERO, res == 0);
         self.p.set(Status::NEGATIVE, (res & 0x80) == 0x80);
@@ -1010,7 +1140,7 @@ impl Mos6502 {
         self.pc = self.pc.wrapping_add(size);
         cycles
     }
-    
+
     // generic branch function
     pub fn t_branch(&mut self, bus: &mut dyn sys::MemoryAccessA16D8, jump: bool) -> u32 {
         if jump {
@@ -1025,15 +1155,15 @@ impl Mos6502 {
         t_upc!(self, 2);
         2
     }
-    
+
     pub fn step_debug(&mut self, bus: &mut dyn sys::MemoryAccessA16D8) -> u32 {
         let op = bus.read_u8(self.pc, false);
         let (s, _) = self.debug_op(bus, op);
-        println!("{:04X}            {:<32} {}             CYC:{}", self.pc, s, self, self.cycle);
+        println!(
+            "{:04X}            {:<32} {}             CYC:{}",
+            self.pc, s, self, self.cycle
+        );
         let cc = self.exec_op(bus, op);
-        /*if self.pc == 0xe1a3 {
-            panic!("BREAKPOINT");
-        }*/
         self.cycle = self.cycle + cc;
         cc
     }
