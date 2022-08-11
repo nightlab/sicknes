@@ -5,13 +5,13 @@ authors = ["Stephan König <tb@octoplex.org>"]
 edition = "2018"
 
 [dependencies]
-clap = "3.0.0-beta.1"
+clap = { version = "3.2.16", features = ["cargo"] }
 bitflags = "1.2.1"
-piston = "0.52.0"
-piston_window = "0.111.0"
-log = "0.4.0"
+piston = "0.53.1"
+piston_window = "0.124.0"
+log = "0.4.17"
 env_logger = "0.7.1"
-rand = "0.7.3"
+rand = "0.8.5"
 
 [profile.bench]
 debug = true

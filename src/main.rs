@@ -88,7 +88,7 @@ fn main() {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .about(crate_description!())
-        .arg("<rom> 'Load the ROM file in iNES format and boot'")
+        .args_from_usage("<rom> 'Load the ROM file in iNES format and boot'")
         .get_matches();
 
     let default_hook = panic::take_hook();
